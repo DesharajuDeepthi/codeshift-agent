@@ -1,4 +1,18 @@
-# UpgradePilot
+# CodeShift Agent — UpgradePilot V1
+
+Agentic code migration intelligence built with **LangGraph StateGraph**, deterministic AST scanning, **LangSmith evaluation harness**, and full **Prometheus + Grafana observability**.
+
+V1 target: Pydantic v1 → v2. Architecture is migration-pack extensible to any language or framework upgrade.
+
+## Screenshots
+
+### Streamlit UI — Live findings from a real Pydantic v1 repo
+![Streamlit UI showing 7 findings across PYD001/003/005/008/009/011](docs/screenshots/streamlit_ui.png)
+
+### Grafana Observability Dashboard — Real-time pipeline metrics
+![Grafana dashboard showing HTTP requests, p95 latency, analyses by status, node durations](docs/screenshots/grafana_dashboard.png)
+
+---
 
 UpgradePilot is an agentic, evidence-validated migration intelligence system for
 public Python repositories moving from Pydantic v1 to Pydantic v2.
