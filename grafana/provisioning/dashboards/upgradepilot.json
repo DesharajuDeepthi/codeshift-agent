@@ -1,0 +1,139 @@
+{
+  "title": "UpgradePilot Observability",
+  "uid": "upgradepilot-v1",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Requests / s",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum by (method, path, status) (rate(upgradepilot_http_requests_total[1m]))",
+          "legendFormat": "{{method}} {{path}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP p95 Latency",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, path) (rate(upgradepilot_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Active Analyses",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4},
+      "targets": [
+        {"expr": "upgradepilot_analyses_active", "legendFormat": "active"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Analyses by Status",
+      "type": "bargauge",
+      "gridPos": {"x": 6, "y": 8, "w": 6, "h": 4},
+      "targets": [
+        {"expr": "sum by (status) (upgradepilot_analyses_total)", "legendFormat": "{{status}}"}
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Graph p95 Duration",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 4},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, status) (rate(upgradepilot_graph_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Node p95 Duration",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, node, category) (rate(upgradepilot_graph_node_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{category}} {{node}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "External API Errors",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 12, "w": 6, "h": 8},
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(upgradepilot_external_api_errors_total[5m]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Cache Hit Rate",
+      "type": "stat",
+      "gridPos": {"x": 18, "y": 12, "w": 6, "h": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(upgradepilot_cache_hits_total[5m])) / clamp_min(sum(rate(upgradepilot_cache_hits_total[5m])) + sum(rate(upgradepilot_cache_misses_total[5m])), 1)",
+          "legendFormat": "hit rate"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "LLM Calls",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 20, "w": 8, "h": 7},
+      "targets": [
+        {
+          "expr": "sum by (agent, status) (rate(upgradepilot_llm_calls_total[5m]))",
+          "legendFormat": "{{agent}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "LLM Tokens",
+      "type": "timeseries",
+      "gridPos": {"x": 8, "y": 20, "w": 8, "h": 7},
+      "targets": [
+        {
+          "expr": "sum by (direction) (rate(upgradepilot_llm_tokens_total[5m]))",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Validation Issues",
+      "type": "timeseries",
+      "gridPos": {"x": 16, "y": 20, "w": 8, "h": 7},
+      "targets": [
+        {
+          "expr": "sum by (severity) (rate(upgradepilot_validation_issues_total[5m]))",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+# Applicability rules for the pydantic-v1-to-v2 migration pack.
+#
+# The applicability engine evaluates these signals in order.
+# All signals are combined to produce a final ApplicabilityStatus.
+#
+# Signals:
+#   manifest_constraint  – parsed version specifier from a dependency manifest
+#   import_symbol        – symbol imported from the pydantic namespace
+#   v1_api_usage         – text/AST pattern that only exists in pydantic v1
+#   v2_api_usage         – text/AST pattern that only exists in pydantic v2
+#   compat_namespace     – use of pydantic.v1 compatibility shim
+
+version: "1.0.0"
+
+# ─── Manifest-based signals ───────────────────────────────────────────────────
+
+manifest_signals:
+  # A pydantic dependency must exist in at least one manifest
+  - signal_id: pydantic_present
+    kind: manifest_constraint
+    package: pydantic
+    required: true
+    absence_status: NOT_APPLICABLE
+    description: >
+      Pydantic must appear in at least one dependency manifest.
+      Without it the repository does not use Pydantic at all.
+
+  # Exact v1 version → definite v1
+  - signal_id: exact_v1_version
+    kind: manifest_constraint
+    package: pydantic
+    constraint_kind: exact
+    version_prefix: "1."
+    result_status: SUPPORTED
+    confidence: 0.99
+    description: Exact pydantic==1.x pin confirms v1.
+
+  # Bounded upper <2 → definite v1
+  - signal_id: bounded_lt2
+    kind: manifest_constraint
+    package: pydantic
+    constraint_kind: bounded
+    upper_lt: "2"
+    result_status: SUPPORTED
+    confidence: 0.98
+    description: Upper bound <2 (e.g. >=1.9,<2) confirms pydantic v1.
+
+  # Exact v2 version → already on v2
+  - signal_id: exact_v2_version
+    kind: manifest_constraint
+    package: pydantic
+    constraint_kind: exact
+    version_prefix: "2."
+    result_status: NOT_APPLICABLE
+    confidence: 0.99
+    description: Exact pydantic==2.x pin — already migrated; pack not applicable.
+
+  # >=2 lower bound → already on v2
+  - signal_id: lower_gte_2
+    kind: manifest_constraint
+    package: pydantic
+    constraint_kind: bounded
+    lower_gte: "2"
+    result_status: NOT_APPLICABLE
+    confidence: 0.99
+    description: Lower bound >=2.0 — repository already requires pydantic v2.
+
+  # Unpinned → needs human review
+  - signal_id: unpinned_pydantic
+    kind: manifest_constraint
+    package: pydantic
+    constraint_kind: unpinned
+    result_status: PROBABLE_NEEDS_REVIEW
+    confidence: 0.6
+    description: >
+      Unpinned pydantic dependency.  Cannot determine installed version without
+      a lock file.  Flags for human review.
+
+# ─── Import / code-pattern signals ────────────────────────────────────────────
+
+code_signals:
+  # v1-only symbols imported directly
+  - signal_id: v1_validator_import
+    kind: import_symbol
+    module: pydantic
+    symbols: [validator, root_validator]
+    result_status: SUPPORTED
+    confidence: 0.9
+    description: "@validator / @root_validator are pydantic v1-only decorators."
+
+  - signal_id: v1_config_class
+    kind: v1_api_usage
+    pattern: "class Config:"
+    context: pydantic_model_body
+    result_status: SUPPORTED
+    confidence: 0.8
+    description: Inner class Config is pydantic v1 configuration style.
+
+  - signal_id: v1_orm_mode
+    kind: v1_api_usage
+    pattern: "orm_mode = True"
+    result_status: SUPPORTED
+    confidence: 0.95
+    description: orm_mode is a pydantic v1 Config attribute.
+
+  # v2-only symbols
+  - signal_id: v2_field_validator
+    kind: import_symbol
+    module: pydantic
+    symbols: [field_validator, model_validator]
+    result_status: NOT_APPLICABLE
+    confidence: 0.9
+    description: field_validator / model_validator are pydantic v2-only decorators.
+
+  - signal_id: v2_model_config
+    kind: v2_api_usage
+    pattern: "model_config ="
+    result_status: NOT_APPLICABLE
+    confidence: 0.9
+    description: model_config dict is pydantic v2 configuration style.
+
+  # pydantic.v1 compatibility shim → actively migrating
+  - signal_id: compat_namespace
+    kind: compat_namespace
+    module_prefix: "pydantic.v1"
+    result_status: PROBABLE_NEEDS_REVIEW
+    confidence: 0.85
+    description: >
+      pydantic.v1 shim detected.  Repository is partially migrated or using
+      the compatibility layer — review required.
+
+# ─── Aggregation rules ────────────────────────────────────────────────────────
+
+aggregation:
+  # If any NOT_APPLICABLE signal fires with confidence >= 0.9 → NOT_APPLICABLE
+  not_applicable_threshold: 0.9
+  # If any SUPPORTED signal fires with confidence >= 0.9 → SUPPORTED
+  supported_threshold: 0.9
+  # Default when only lower-confidence signals fire
+  default_status: PROBABLE_NEEDS_REVIEW

@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN pip install --no-cache-dir uv==0.11.29
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+COPY src/ ./src/
+RUN uv sync --frozen --no-dev
+
+FROM python:3.12-slim AS runtime
+
+RUN groupadd --gid 1001 appgroup && \
+    useradd --uid 1001 --gid appgroup --no-create-home appuser
+
+WORKDIR /app
+
+COPY --from=builder /build/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/src"
+
+COPY src/ ./src/
+
+USER appuser
+
+EXPOSE 8501
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')" || exit 1
+
+CMD ["python", "-m", "streamlit", "run", "src/upgradepilot/ui/app.py", \
+     "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

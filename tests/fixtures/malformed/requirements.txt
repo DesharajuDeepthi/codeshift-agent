@@ -1,0 +1,5 @@
+pydantic==1.10.0
+  -- not a valid line
+requests>=2.28.0
+@@@invalid@@@
+flask

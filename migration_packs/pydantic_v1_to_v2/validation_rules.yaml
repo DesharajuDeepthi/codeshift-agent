@@ -1,0 +1,126 @@
+# Validation rules for pydantic-v1-to-v2 migration pack.
+#
+# These rules are applied by the deterministic validation node AFTER the
+# LLM agents produce their outputs.  Failures can be BLOCKING or REPAIRABLE.
+#
+# BLOCKING failures terminate the analysis with a partial report.
+# REPAIRABLE failures trigger the single repair pass.
+
+version: "1.0.0"
+
+rules:
+  # ── File / line reference validation ──────────────────────────────────────
+
+  - validator_id: VAL001
+    description: "Each finding must reference a file that exists in the snapshot"
+    severity: BLOCKING
+    check: finding_file_exists
+    message_template: >
+      Finding {finding_id} references file {file_path!r} which does not
+      exist in the repository snapshot.
+
+  - validator_id: VAL002
+    description: "Finding line ranges must be within the file's actual line count"
+    severity: BLOCKING
+    check: finding_line_in_range
+    message_template: >
+      Finding {finding_id} references lines {start_line}–{end_line} in
+      {file_path!r} but the file only has {actual_lines} lines.
+
+  - validator_id: VAL003
+    description: "Evidence excerpt must match the actual file content at that location"
+    severity: REPAIRABLE
+    check: finding_excerpt_matches
+    message_template: >
+      Finding {finding_id}: evidence_excerpt does not match file content
+      at {file_path}:{start_line}.
+
+  # ── Rule-ID validation ────────────────────────────────────────────────────
+
+  - validator_id: VAL004
+    description: "Every finding rule_id must be a known rule from this pack"
+    severity: BLOCKING
+    check: rule_id_in_pack
+    message_template: >
+      Finding {finding_id} uses unknown rule_id {rule_id!r}.  Only rules
+      defined in detection_rules.yaml are permitted.
+
+  # ── Documentation source validation ───────────────────────────────────────
+
+  - validator_id: VAL005
+    description: "Every documentation_source_id must be in trusted_sources.yaml"
+    severity: BLOCKING
+    check: source_id_in_pack
+    message_template: >
+      Finding {finding_id} references unknown source_id {source_id!r}.
+      Only sources in trusted_sources.yaml are permitted.
+
+  - validator_id: VAL006
+    description: "Every plan claim that cites a document must link a real source"
+    severity: REPAIRABLE
+    check: plan_claim_has_source
+    message_template: >
+      Plan claim {claim_id} of type RECOMMENDATION cites no documentation
+      source.  Recommendations must be grounded in trusted sources.
+
+  # ── Package / version claim validation ────────────────────────────────────
+
+  - validator_id: VAL007
+    description: "Version claims must match the detected constraint evidence"
+    severity: BLOCKING
+    check: version_claim_matches_evidence
+    message_template: >
+      Plan claim {claim_id} asserts pydantic version {claimed_version!r}
+      but the manifest evidence only supports {evidence_summary}.
+
+  # ── Prohibited-content validation ─────────────────────────────────────────
+
+  - validator_id: VAL008
+    description: "Reports must not claim tests were executed"
+    severity: BLOCKING
+    check: no_test_execution_claim
+    patterns:
+      - "ran the tests"
+      - "tests pass"
+      - "test suite passes"
+      - "executed the migration"
+      - "confirmed the migration works"
+    message_template: >
+      Report contains prohibited claim that implies code execution or
+      test execution: {matched_text!r}.
+
+  - validator_id: VAL009
+    description: "Reports must not claim changes were made to the repository"
+    severity: BLOCKING
+    check: no_modification_claim
+    patterns:
+      - "I changed"
+      - "I updated"
+      - "I applied"
+      - "I migrated"
+      - "I fixed"
+      - "was applied to"
+      - "has been updated"
+    message_template: >
+      Report contains prohibited claim that implies repository modification:
+      {matched_text!r}.  UpgradePilot is read-only.
+
+  # ── Risk score validation ─────────────────────────────────────────────────
+
+  - validator_id: VAL010
+    description: "Risk score must be deterministically computed; LLM must not override it"
+    severity: BLOCKING
+    check: risk_score_is_deterministic
+    message_template: >
+      Risk score {reported_score} does not match the deterministic score
+      {computed_score} computed from the scoring rules.
+
+  # ── Finding completeness ───────────────────────────────────────────────────
+
+  - validator_id: VAL011
+    description: "Each finding must specify confidence in [0.0, 1.0]"
+    severity: BLOCKING
+    check: finding_confidence_in_range
+    message_template: >
+      Finding {finding_id} has invalid confidence {confidence} (must be in
+      [0.0, 1.0]).

@@ -1,0 +1,142 @@
+# Risk scoring rules for pydantic-v1-to-v2 migration pack.
+#
+# Each rule contributes points to the deterministic risk score.
+# The LLM may explain the score but CANNOT set or modify it.
+#
+# scoring_version must match pack.yaml scoring_version.
+
+version: "1.0.0"
+scoring_version: "1.0.0"
+
+# Maximum possible points (used to normalise to 0–100 if desired)
+max_points: 100
+
+# Risk levels (inclusive lower bound of total points)
+levels:
+  - level: LOW
+    min_points: 0
+  - level: MEDIUM
+    min_points: 15
+  - level: HIGH
+    min_points: 35
+  - level: CRITICAL
+    min_points: 60
+
+rules:
+  # ── Finding-driven components ──────────────────────────────────────────────
+
+  - component_id: RSK001
+    description: "Validator migration complexity (@validator / @root_validator count)"
+    rule_ids: [PYD001, PYD002]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 3
+      cap: 15
+    rationale: >
+      Each validator requires a mechanical but non-trivial change to its
+      signature, pre/post mode, and @classmethod decoration.
+
+  - component_id: RSK002
+    description: "Config class migration complexity"
+    rule_ids: [PYD003, PYD004, PYD005, PYD006, PYD007, PYD008]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 2
+      cap: 10
+    rationale: Inner Config classes require systematic attribute renaming.
+
+  - component_id: RSK003
+    description: "Serialisation method migration (.dict, .json, .copy)"
+    rule_ids: [PYD009, PYD010, PYD011]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 2
+      cap: 10
+    rationale: Call-site renames with potential keyword-argument changes.
+
+  - component_id: RSK004
+    description: "Parsing method migration (.parse_obj, .parse_raw, parse_obj_as)"
+    rule_ids: [PYD012, PYD013, PYD014, PYD015]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 2
+      cap: 10
+    rationale: Construction-site renames; TypeAdapter introduces new concept.
+
+  - component_id: RSK005
+    description: "Schema method migration (.schema, .schema_json)"
+    rule_ids: [PYD016, PYD017]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 2
+      cap: 8
+    rationale: Schema access may be used in API documentation generation.
+
+  - component_id: RSK006
+    description: "pydantic.v1 compatibility shim usage"
+    rule_ids: [PYD021]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 4
+      cap: 12
+    rationale: >
+      Shim usage signals incomplete prior migration; shim will be removed
+      in future pydantic releases.
+
+  # ── Repository-level risk factors ─────────────────────────────────────────
+
+  - component_id: RSK007
+    description: "Widespread affected files"
+    scoring:
+      kind: threshold_step
+      thresholds:
+        - above: 50
+          points: 10
+        - above: 20
+          points: 6
+        - above: 5
+          points: 3
+        - above: 0
+          points: 0
+    source: finding_file_count
+    rationale: More affected files = higher coordination and regression risk.
+
+  - component_id: RSK008
+    description: "No test coverage signals detected"
+    scoring:
+      kind: boolean
+      when_true_points: 8
+    source: no_test_files
+    rationale: >
+      Missing tests make it impossible to verify correctness after migration.
+
+  - component_id: RSK009
+    description: "No CI system detected"
+    scoring:
+      kind: boolean
+      when_true_points: 5
+    source: no_ci_detected
+    rationale: >
+      Without CI, regressions may not be caught before deployment.
+
+  - component_id: RSK010
+    description: "GenericModel usage (structural change required)"
+    rule_ids: [PYD019]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 3
+      cap: 9
+    rationale: >
+      GenericModel→BaseModel change works for simple cases but may require
+      review when used with TypeVar constraints.
+
+  - component_id: RSK011
+    description: "Dynamic patterns requiring manual review"
+    rule_ids: [PYD020, PYD022]
+    scoring:
+      kind: count_scaled
+      per_occurrence: 2
+      cap: 6
+    rationale: >
+      pydantic.dataclasses and custom GetterDict usage may have subtle
+      behavioural differences in v2.

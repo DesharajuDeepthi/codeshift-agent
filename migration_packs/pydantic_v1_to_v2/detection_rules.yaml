@@ -1,0 +1,369 @@
+# Detection rules for pydantic-v1-to-v2 migration pack.
+#
+# Each rule specifies an AST matcher (preferred) or text-fallback matcher.
+# Text-scan rules are marked lower confidence and flagged accordingly.
+#
+# Fields:
+#   rule_id            – stable, namespaced identifier
+#   category           – rule category enum value
+#   severity           – CRITICAL | HIGH | MEDIUM | LOW | INFO
+#   rationale          – one-sentence explanation of the migration need
+#   migration_concept  – short description of the v2 equivalent
+#   source_ids         – references to trusted_sources.yaml entries
+#   risk_points        – integer contribution to the risk score (>= 0)
+#   matcher            – AST or text matcher specification
+#   false_positive_exclusions – patterns to suppress false positives
+#   confidence_ast     – confidence when matched via AST (0.0–1.0)
+#   confidence_text    – confidence when matched via text scan (0.0–1.0)
+
+version: "1.0.0"
+
+rules:
+  # ── Decorator patterns ────────────────────────────────────────────────────
+
+  - rule_id: PYD001
+    category: validator_migration
+    severity: HIGH
+    rationale: >
+      @validator is removed in pydantic v2.  Replace with @field_validator,
+      adjusting the signature and adding @classmethod.
+    migration_concept: "@validator → @field_validator"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_VALIDATORS]
+    risk_points: 3
+    matcher:
+      kind: ast_decorator
+      decorator_names: [validator]
+      import_module: pydantic
+    confidence_ast: 0.97
+    confidence_text: 0.75
+
+  - rule_id: PYD002
+    category: validator_migration
+    severity: HIGH
+    rationale: >
+      @root_validator is removed in pydantic v2.  Replace with
+      @model_validator(mode='before') or @model_validator(mode='after').
+    migration_concept: "@root_validator → @model_validator"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_VALIDATORS]
+    risk_points: 4
+    matcher:
+      kind: ast_decorator
+      decorator_names: [root_validator]
+      import_module: pydantic
+    confidence_ast: 0.97
+    confidence_text: 0.75
+
+  # ── Class Config ──────────────────────────────────────────────────────────
+
+  - rule_id: PYD003
+    category: config_migration
+    severity: HIGH
+    rationale: >
+      Inner class Config is replaced by model_config = ConfigDict(…) in v2.
+    migration_concept: "class Config → model_config = ConfigDict(...)"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_CONFIG]
+    risk_points: 2
+    matcher:
+      kind: ast_classdef
+      name: Config
+      parent_kind: ClassDef
+      parent_base: BaseModel
+    confidence_ast: 0.92
+    confidence_text: 0.70
+    false_positive_exclusions:
+      - pattern: "class Config(BaseConfig):"
+        reason: Might be a non-pydantic Config class
+
+  - rule_id: PYD004
+    category: config_migration
+    severity: MEDIUM
+    rationale: orm_mode is renamed to from_attributes in pydantic v2.
+    migration_concept: "orm_mode = True → from_attributes = True"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_attribute_assign
+      attribute_name: orm_mode
+      context: Config
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  - rule_id: PYD005
+    category: config_migration
+    severity: LOW
+    rationale: >
+      allow_population_by_field_name is renamed to populate_by_name in v2.
+    migration_concept: "allow_population_by_field_name → populate_by_name"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 1
+    matcher:
+      kind: ast_attribute_assign
+      attribute_name: allow_population_by_field_name
+      context: Config
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  - rule_id: PYD006
+    category: config_migration
+    severity: LOW
+    rationale: validate_all is renamed to validate_default in pydantic v2.
+    migration_concept: "validate_all → validate_default"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 1
+    matcher:
+      kind: ast_attribute_assign
+      attribute_name: validate_all
+      context: Config
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  - rule_id: PYD007
+    category: config_migration
+    severity: LOW
+    rationale: smart_union is always enabled in pydantic v2; attribute removed.
+    migration_concept: "smart_union = True → remove (always enabled in v2)"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 1
+    matcher:
+      kind: ast_attribute_assign
+      attribute_name: smart_union
+      context: Config
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  - rule_id: PYD008
+    category: config_migration
+    severity: MEDIUM
+    rationale: >
+      json_encoders is deprecated in v2 in favour of custom serialisers.
+    migration_concept: "json_encoders → custom __get_pydantic_core_schema__ or @field_serializer"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_SERIALIZATION]
+    risk_points: 3
+    matcher:
+      kind: ast_attribute_assign
+      attribute_name: json_encoders
+      context: Config
+    confidence_ast: 0.93
+    confidence_text: 0.78
+
+  # ── Serialisation methods ─────────────────────────────────────────────────
+
+  - rule_id: PYD009
+    category: serialisation_migration
+    severity: HIGH
+    rationale: >
+      model.dict() is removed in pydantic v2.  Replace with model.model_dump().
+    migration_concept: ".dict() → .model_dump()"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_SERIALIZATION]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: dict
+      receiver_type: BaseModel
+    confidence_ast: 0.85
+    confidence_text: 0.65
+    false_positive_exclusions: []
+    # Note: AST matching already excludes bare dict() calls (matches only
+    # Attribute.dict(), not Name.dict()); text-scan mode may over-report.
+
+  - rule_id: PYD010
+    category: serialisation_migration
+    severity: HIGH
+    rationale: >
+      model.json() is removed in pydantic v2.  Replace with
+      model.model_dump_json().
+    migration_concept: ".json() → .model_dump_json()"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_SERIALIZATION]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: json
+      receiver_type: BaseModel
+    confidence_ast: 0.85
+    confidence_text: 0.65
+
+  - rule_id: PYD011
+    category: serialisation_migration
+    severity: MEDIUM
+    rationale: >
+      model.copy() is removed in pydantic v2.  Replace with model.model_copy().
+    migration_concept: ".copy() → .model_copy()"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: copy
+      receiver_type: BaseModel
+    confidence_ast: 0.82
+    confidence_text: 0.60
+
+  # ── Parsing / construction methods ────────────────────────────────────────
+
+  - rule_id: PYD012
+    category: parsing_migration
+    severity: HIGH
+    rationale: >
+      BaseModel.parse_obj() is removed in v2.  Replace with
+      MyModel.model_validate().
+    migration_concept: ".parse_obj() → .model_validate()"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: parse_obj
+      receiver_type: BaseModel
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  - rule_id: PYD013
+    category: parsing_migration
+    severity: MEDIUM
+    rationale: >
+      parse_raw() is removed in v2.  Replace with model_validate_json().
+    migration_concept: ".parse_raw() → .model_validate_json()"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: parse_raw
+      receiver_type: BaseModel
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  - rule_id: PYD014
+    category: parsing_migration
+    severity: HIGH
+    rationale: >
+      parse_obj_as() is removed in v2.  Replace with pydantic.TypeAdapter.
+    migration_concept: "parse_obj_as → TypeAdapter(T).validate_python(obj)"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE, PYDANTIC_V2_TYPE_ADAPTER]
+    risk_points: 3
+    matcher:
+      kind: ast_call
+      function_name: parse_obj_as
+      import_module: pydantic
+    confidence_ast: 0.97
+    confidence_text: 0.82
+
+  - rule_id: PYD015
+    category: parsing_migration
+    severity: MEDIUM
+    rationale: from_orm() is removed in v2; use model_validate(obj, from_attributes=True).
+    migration_concept: ".from_orm() → .model_validate(obj, from_attributes=True)"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: from_orm
+      receiver_type: BaseModel
+    confidence_ast: 0.95
+    confidence_text: 0.80
+
+  # ── Schema methods ─────────────────────────────────────────────────────────
+
+  - rule_id: PYD016
+    category: schema_migration
+    severity: MEDIUM
+    rationale: >
+      BaseModel.schema() is removed in v2.  Replace with
+      MyModel.model_json_schema().
+    migration_concept: ".schema() → .model_json_schema()"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: schema
+      receiver_type: BaseModel
+    confidence_ast: 0.90
+    confidence_text: 0.72
+
+  - rule_id: PYD017
+    category: schema_migration
+    severity: MEDIUM
+    rationale: BaseModel.schema_json() is removed in v2.
+    migration_concept: ".schema_json() → json.dumps(model.model_json_schema())"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_method_call
+      method_name: schema_json
+      receiver_type: BaseModel
+    confidence_ast: 0.90
+    confidence_text: 0.72
+
+  # ── Private attribute access ───────────────────────────────────────────────
+
+  - rule_id: PYD018
+    category: internal_api_migration
+    severity: MEDIUM
+    rationale: >
+      __fields__ is deprecated in pydantic v2.  Use model_fields instead.
+    migration_concept: "__fields__ → model_fields"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_attribute_access
+      attribute_name: __fields__
+      receiver_type: BaseModel
+    confidence_ast: 0.88
+    confidence_text: 0.70
+
+  # ── Special types / imports ────────────────────────────────────────────────
+
+  - rule_id: PYD019
+    category: import_migration
+    severity: MEDIUM
+    rationale: GenericModel is removed in pydantic v2; just inherit from BaseModel.
+    migration_concept: "GenericModel → BaseModel (generic support built-in)"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_import
+      module: pydantic.generics
+      name: GenericModel
+    confidence_ast: 0.97
+    confidence_text: 0.85
+
+  - rule_id: PYD020
+    category: import_migration
+    severity: INFO
+    rationale: >
+      pydantic.dataclasses is available in v2 but some behaviours changed.
+    migration_concept: "pydantic.dataclasses — review for behavioural changes"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 1
+    matcher:
+      kind: ast_import
+      module: pydantic.dataclasses
+    confidence_ast: 0.90
+    confidence_text: 0.75
+
+  - rule_id: PYD021
+    category: compat_migration
+    severity: HIGH
+    rationale: >
+      pydantic.v1 shim imports mean the code has not been fully migrated.
+      These will be removed in a future pydantic release.
+    migration_concept: "pydantic.v1.* → migrate to native pydantic v2 APIs"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 4
+    matcher:
+      kind: ast_import
+      module_prefix: pydantic.v1
+    confidence_ast: 0.99
+    confidence_text: 0.90
+
+  - rule_id: PYD022
+    category: internal_api_migration
+    severity: LOW
+    rationale: >
+      Custom GetterDict usage relied on v1 ORM internals now replaced.
+    migration_concept: "GetterDict → model_validator or direct attribute access"
+    source_ids: [PYDANTIC_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: ast_import
+      module: pydantic.utils
+      name: GetterDict
+    confidence_ast: 0.95
+    confidence_text: 0.80

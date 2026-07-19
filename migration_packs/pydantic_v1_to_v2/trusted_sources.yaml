@@ -1,0 +1,64 @@
+# Trusted documentation sources for pydantic-v1-to-v2 migration pack.
+#
+# Only these sources may be used as evidence.
+# No blogs, Q&A forums, or arbitrary search results.
+# content_hash is the SHA-256 of the curated snapshot stored locally.
+
+version: "1.0.0"
+
+sources:
+  - source_id: PYDANTIC_MIGRATION_GUIDE
+    title: "Pydantic v1 → v2 Migration Guide"
+    canonical_url: "https://docs.pydantic.dev/latest/migration/"
+    domain: docs.pydantic.dev
+    kind: migration_guide
+    curated_snapshot_version: "1.0.0"
+    content_hash: null   # populated when snapshot is fetched
+    notes: >
+      Primary migration reference.  Covers all renamed APIs, new decorator
+      signatures, config migration, and serialisation changes.
+
+  - source_id: PYDANTIC_V2_VALIDATORS
+    title: "Pydantic v2 — Validators"
+    canonical_url: "https://docs.pydantic.dev/latest/concepts/validators/"
+    domain: docs.pydantic.dev
+    kind: concept_reference
+    curated_snapshot_version: "1.0.0"
+    content_hash: null
+
+  - source_id: PYDANTIC_V2_CONFIG
+    title: "Pydantic v2 — Configuration"
+    canonical_url: "https://docs.pydantic.dev/latest/concepts/config/"
+    domain: docs.pydantic.dev
+    kind: concept_reference
+    curated_snapshot_version: "1.0.0"
+    content_hash: null
+
+  - source_id: PYDANTIC_V2_SERIALIZATION
+    title: "Pydantic v2 — Serialisation"
+    canonical_url: "https://docs.pydantic.dev/latest/concepts/serialization/"
+    domain: docs.pydantic.dev
+    kind: concept_reference
+    curated_snapshot_version: "1.0.0"
+    content_hash: null
+
+  - source_id: PYDANTIC_V2_TYPE_ADAPTER
+    title: "Pydantic v2 — TypeAdapter"
+    canonical_url: "https://docs.pydantic.dev/latest/concepts/type_adapter/"
+    domain: docs.pydantic.dev
+    kind: concept_reference
+    curated_snapshot_version: "1.0.0"
+    content_hash: null
+
+  - source_id: PYDANTIC_CHANGELOG
+    title: "Pydantic — Changelog"
+    canonical_url: "https://docs.pydantic.dev/latest/changelog/"
+    domain: docs.pydantic.dev
+    kind: changelog
+    curated_snapshot_version: "1.0.0"
+    content_hash: null
+
+# Allowed domains — any URL not matching one of these is rejected
+allowed_domains:
+  - docs.pydantic.dev
+  - pydantic.dev

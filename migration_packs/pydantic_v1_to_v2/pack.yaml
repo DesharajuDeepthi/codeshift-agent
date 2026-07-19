@@ -1,0 +1,44 @@
+pack_id: pydantic-v1-to-v2
+version: "1.0.0"
+display_name: "Pydantic v1 → v2"
+description: >
+  Detects Pydantic v1 usage patterns and produces an evidence-backed migration
+  plan for upgrading to Pydantic v2.  All findings are derived from official
+  Pydantic documentation; no speculative recommendations are made.
+
+source_package: pydantic
+source_major: 1
+target_major: 2
+
+supported_manifest_formats:
+  - requirements.txt
+  - pyproject.toml-pep621
+  - pyproject.toml-poetry
+
+supported_python_syntax_versions:
+  - "3.8"
+  - "3.9"
+  - "3.10"
+  - "3.11"
+  - "3.12"
+
+curated_source_snapshot_version: "1.0.0"
+detector_version: "1.0.0"
+scoring_version: "1.0.0"
+
+prompt_versions:
+  documentation_research: "1.0.0"
+  compatibility_interpretation: "1.0.0"
+  migration_planning: "1.0.0"
+  evidence_critic: "1.0.0"
+
+required_files:
+  - applicability.yaml
+  - detection_rules.yaml
+  - risk_rules.yaml
+  - trusted_sources.yaml
+  - validation_rules.yaml
+  - prompts/documentation_research.md
+  - prompts/compatibility_interpretation.md
+  - prompts/migration_planning.md
+  - prompts/evidence_critic.md
