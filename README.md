@@ -180,3 +180,81 @@ API analysis storage, and fixture-backed local public migration examples.
 See [docs/production_hardening_roadmap.md](docs/production_hardening_roadmap.md). Items
 include durable analysis storage, stronger auth/rate limiting, managed secrets, external
 container scanners, private repository support, and broader migration packs.
+
+---
+
+## V2 Architecture — Multi-User, Memory & Delta Detection
+
+V1 is single-user and stateless across runs. V2 extends the existing Postgres + Redis + LangGraph stack to support concurrent users and cross-run memory without a rewrite.
+
+### Multi-User
+
+```mermaid
+flowchart LR
+    U1["User A"] & U2["User B"] & U3["User C"] --> API["FastAPI\n(JWT auth middleware)"]
+    API --> Q["Redis job queue\n(per-user isolation)"]
+    Q --> W1["Worker 1\nLangGraph"] & W2["Worker 2\nLangGraph"]
+    W1 & W2 --> PG["Postgres\nanalyses + users"]
+    W1 & W2 --> LS["LangSmith traces"]
+```
+
+**What changes:**
+- `users` table in Postgres (id, email, created_at) — auth via JWT / OAuth2
+- `analyses` table gets a `user_id` foreign key — each user sees only their own runs
+- Redis job queue scopes worker slots per user to prevent one user starving others
+- FastAPI middleware validates JWT on every request — zero changes to the LangGraph graph itself
+
+### Cross-Run Memory via LangGraph Checkpointer
+
+The checkpointer is already wired in V1. V2 activates it with a stable `thread_id`:
+
+```python
+thread_id = sha256(f"{user_id}:{repo_url}")
+```
+
+Same user + same repo → LangGraph resumes from the previous checkpoint. The graph can read
+its own prior output (findings list, commit SHA, risk score) before running the new analysis.
+
+### Delta Detection
+
+When a user re-analyzes the same repository, the system compares the new findings against
+the stored checkpoint from the previous run and produces a delta report:
+
+```
+Run 1  (2026-07-18, commit 029eb77):  7 findings
+  PYD001  app/models.py:18      HIGH
+  PYD003  app/schemas.py:42     HIGH
+  PYD005  app/models.py:55      LOW
+  PYD008  app/config.py:12      MEDIUM
+  PYD009  app/validators.py:7   HIGH
+  PYD009  app/validators.py:31  HIGH
+  PYD011  app/schemas.py:89     MEDIUM
+
+Run 2  (2026-07-25, commit a3f9c12):  5 findings
+
+Delta:
+  ✅ FIXED       PYD001  app/models.py:18       (.dict() replaced with .model_dump())
+  ✅ FIXED       PYD011  app/schemas.py:89      (Field alias removed)
+  📌 STILL OPEN  5 findings remain
+  ⚠️  NEW         (none introduced)
+```
+
+**Why this matters:** most static analysis tools are stateless scanners — run once, get a
+report. Delta detection turns CodeShift Agent into a **continuous migration tracker**: teams
+can commit fixes incrementally and see exactly what progress was made each sprint, without
+manually diffing two JSON reports.
+
+**Implementation:** pure set difference on `(rule_id, file_path, start_line)` tuples between
+the current findings and the checkpointed findings. No LLM involved — deterministic, fast,
+auditable.
+
+### V2 at a Glance
+
+| Capability | V1 | V2 |
+|---|---|---|
+| Users | Anonymous, single | JWT auth, multi-tenant |
+| Analysis history | Lost on refresh | Persistent per user in Postgres |
+| Concurrent analyses | Single-process | Redis queue + N workers |
+| Cross-run memory | None | LangGraph checkpointer (thread_id) |
+| Delta detection | None | Set diff of findings across runs |
+| Migration packs | Pydantic v1→v2 | Extensible: Django, SQLAlchemy, … |
