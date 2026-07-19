@@ -12,6 +12,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from upgradepilot import __version__
 from upgradepilot.api.analyses import router as analyses_router
 from upgradepilot.api.health import router as health_router
+from upgradepilot.auth.router import router as auth_router
 from upgradepilot.api.middleware import PrometheusMiddleware
 from upgradepilot.config import get_settings
 from upgradepilot.observability.logging import configure_logging, get_logger
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.add_middleware(PrometheusMiddleware)
     app.include_router(health_router)
     app.include_router(analyses_router)
+    app.include_router(auth_router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> PlainTextResponse:
