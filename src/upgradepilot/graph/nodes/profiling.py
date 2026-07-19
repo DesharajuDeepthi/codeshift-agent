@@ -136,9 +136,9 @@ async def profile_repository(state: UpgradePilotState) -> dict[str, Any]:
         from upgradepilot.models.snapshot import RepositorySnapshot
 
         snapshot = RepositorySnapshot.model_validate(snapshot_dict)
-        profile = profile_repository(Path(snapshot.workspace_path))
+        profile = profile_repository(Path(snapshot.workspace_path))  # type: ignore[assignment]
         return {
-            "profile": profile.model_dump(),
+            "profile": profile.model_dump(),  # type: ignore[attr-defined]
             "node_executions": [node_record(_NODE_PROFILE, started)],
         }
     except Exception as exc:

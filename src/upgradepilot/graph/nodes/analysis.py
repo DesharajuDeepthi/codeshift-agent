@@ -122,7 +122,7 @@ async def parse_dependencies(state: UpgradePilotState) -> dict[str, Any]:
                 continue
             content = path.read_text(encoding="utf-8", errors="replace")
             if manifest.kind in ("pyproject_toml", "pyproject.toml"):
-                deps, _ = parse_pyproject_toml(content, manifest.path)
+                deps, _ = parse_pyproject_toml(content, manifest.path)  # type: ignore[misc]
             elif manifest.kind.startswith("requirements") and manifest.kind.endswith(".txt"):
                 deps, _ = parse_requirements_txt(content, manifest.path)
             elif manifest.kind in ("requirements_txt", "requirements"):
