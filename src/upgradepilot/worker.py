@@ -72,7 +72,7 @@ def _run_analysis(job: AnalysisJob, checkpointer: Any) -> dict[str, Any]:  # noq
         },
     )
     config = {"configurable": {"thread_id": job.thread_id}}
-    result: dict[str, Any] = graph.invoke(state, config=config)
+    result: dict[str, Any] = graph.invoke(state, config=config)  # type: ignore[attr-defined]
     return result
 
 

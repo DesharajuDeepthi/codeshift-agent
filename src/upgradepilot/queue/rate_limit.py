@@ -44,7 +44,7 @@ def consume(
 
     for _ in range(_MAX_RETRIES):
         try:
-            with redis.pipeline() as pipe:  # type: ignore[attr-defined]
+            with redis.pipeline() as pipe:  # type: ignore[attr-defined,unused-ignore]
                 pipe.watch(key)
                 now = time.time()
 
@@ -80,7 +80,7 @@ def consume(
 def remaining_tokens(redis: RedisClient, user_id: uuid.UUID) -> float:
     """Return the current token count for a user (for observability)."""
     key = _BUCKET_KEY.format(user_id=user_id)
-    raw = redis.hget(key, "tokens")  # type: ignore[attr-defined]
+    raw = redis.hget(key, "tokens")  # type: ignore[attr-defined,unused-ignore]
     return float(raw) if raw is not None else float(_MAX_TOKENS)
 
 
