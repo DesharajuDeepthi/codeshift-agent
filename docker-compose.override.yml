@@ -1,0 +1,6 @@
+# Local development only (not used in CI/production).
+# Publishes Postgres on host port 5433 so Alembic migrations can run from the host.
+services:
+  postgres:
+    ports:
+      - "5433:5432"

@@ -25,3 +25,8 @@ workspace/
 # macOS
 .DS_Store
 **/.DS_Store
+PROMPT_TO_START_CLAUDE_CODE.md
+UpgradePilot_Claude_Code_Full_Prompts_With_Modes.md
+00_START_HERE.md
+READING_AND_BUILD_ORDER.md
+.claude/
