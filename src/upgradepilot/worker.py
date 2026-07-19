@@ -28,6 +28,11 @@ from upgradepilot.graph.build import build_graph
 from upgradepilot.graph.checkpointer import get_checkpointer
 from upgradepilot.graph.state import make_initial_state
 from upgradepilot.memory.store import get_previous_findings
+from upgradepilot.observability.metrics import (
+    record_job_completed,
+    record_job_failed,
+    record_job_retried,
+)
 from upgradepilot.queue.jobs import AnalysisJob, RedisClient, claim_next_job, complete_job, fail_job
 
 log = logging.getLogger(__name__)
@@ -123,11 +128,16 @@ def process_one(redis: RedisClient, conn: Connection) -> bool:
 
         _persist(conn, job, result, delta_json)
         complete_job(redis, job.job_id)
+        record_job_completed(fixed=len(delta.fixed), new=len(delta.new))
         log.info("completed job %s — %s", job.job_id, delta.summary)
 
     except Exception as exc:  # noqa: BLE001
         error_code = type(exc).__name__
         retried = fail_job(redis, job, error_code=error_code)
+        if retried:
+            record_job_retried()
+        else:
+            record_job_failed(error_code=error_code)
         log.warning("job %s failed (%s) retry=%s", job.job_id, error_code, retried)
 
     return True

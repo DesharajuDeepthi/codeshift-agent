@@ -258,3 +258,23 @@ auditable.
 | Cross-run memory | None | LangGraph checkpointer (thread_id) |
 | Delta detection | None | Set diff of findings across runs |
 | Migration packs | Pydantic v1→v2 | Extensible: Django, SQLAlchemy, … |
+
+### V2 Implementation Status
+
+All 8 phases complete on [`v2/multi-user-memory`](https://github.com/DesharajuDeepthi/codeshift-agent/tree/v2/multi-user-memory):
+
+| Phase | What landed | Tests |
+|-------|-------------|-------|
+| 0 | Alembic migrations — `users`, `jobs`, `analyses` tables | — |
+| 1 | Delta detector — deterministic `(rule_id, file_path, line)` set-diff | 8 |
+| 2 | Thread ID memory — `sha256(user_id + repo_url)` LangGraph scoping | 10 |
+| 3 | GitHub OAuth + JWT — `/auth/login`, `/auth/callback`, HS256 8h tokens | 9 |
+| 4 | Redis work queue — per-user lists, round-robin fairness, FIFO | 9 |
+| 5 | Analysis worker — claims job → run graph → delta → persist → ack | 8 |
+| 6 | Rate limiting — Redis token bucket, 10 req/60s, WATCH/MULTI/EXEC | 7 |
+| 7 | Streamlit UI — login button, history sidebar, delta badge | 6 |
+| 8 | Prometheus metrics — queue counters, delta totals, rate-limit events | — |
+| **Total** | | **57 unit tests, 0 failures** |
+
+> **Zero graph changes:** `git diff main -- src/upgradepilot/graph/` is empty.
+> All V2 capability composes around the existing 18-node LangGraph, not into it.

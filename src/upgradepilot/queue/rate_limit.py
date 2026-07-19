@@ -82,3 +82,24 @@ def remaining_tokens(redis: RedisClient, user_id: uuid.UUID) -> float:
     key = _BUCKET_KEY.format(user_id=user_id)
     raw = redis.hget(key, "tokens")  # type: ignore[attr-defined]
     return float(raw) if raw is not None else float(_MAX_TOKENS)
+
+
+def consume_or_reject(
+    redis: RedisClient,
+    user_id: uuid.UUID,
+    *,
+    max_tokens: int = _MAX_TOKENS,
+    refill_rate: float = _REFILL_RATE,
+) -> bool:
+    """
+    consume() + Prometheus instrumentation.
+
+    Emits record_rate_limited when the request is denied.
+    Returns True if allowed, False if rate-limited.
+    """
+    from upgradepilot.observability.metrics import record_rate_limited  # local import avoids cycle
+
+    allowed = consume(redis, user_id, max_tokens=max_tokens, refill_rate=refill_rate)
+    if not allowed:
+        record_rate_limited(user_id=str(user_id))
+    return allowed
