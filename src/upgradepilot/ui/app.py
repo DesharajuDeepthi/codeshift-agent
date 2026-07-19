@@ -17,6 +17,118 @@ JSON_REPORT_SUFFIX = "report.json"
 MARKDOWN_REPORT_SUFFIX = "report.md"
 GITHUB_ISSUE_SUFFIX = "github-issue.md"
 
+# ---------------------------------------------------------------------------
+# V2 Auth helpers
+# ---------------------------------------------------------------------------
+
+_AUTH_TOKEN_KEY = "auth_token"  # noqa: S105
+_AUTH_LOGIN_KEY = "auth_login"
+
+
+def _auth_headers() -> dict[str, str]:
+    token = st.session_state.get(_AUTH_TOKEN_KEY)
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _is_authenticated() -> bool:
+    return bool(st.session_state.get(_AUTH_TOKEN_KEY))
+
+
+def _handle_oauth_callback() -> None:
+    """Exchange GitHub OAuth code for a JWT if query params are present."""
+    params = st.query_params
+    code = params.get("code")
+    state = params.get("state")
+    if not code or not state:
+        return
+    try:
+        resp = httpx.get(
+            f"{API_BASE_URL}/auth/callback",
+            params={"code": code, "state": state},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        st.session_state[_AUTH_TOKEN_KEY] = data["access_token"]
+        st.session_state[_AUTH_LOGIN_KEY] = data.get("login", "user")
+        st.query_params.clear()
+        st.rerun()
+    except httpx.HTTPError:
+        st.error("GitHub login failed. Please try again.")
+
+
+def _show_auth_sidebar() -> None:
+    """Render login/logout controls in the sidebar."""
+    st.sidebar.divider()
+    if _is_authenticated():
+        login = st.session_state.get(_AUTH_LOGIN_KEY, "user")
+        st.sidebar.caption(f"Signed in as **{login}**")
+        if st.sidebar.button("Sign out"):
+            st.session_state.pop(_AUTH_TOKEN_KEY, None)
+            st.session_state.pop(_AUTH_LOGIN_KEY, None)
+            st.rerun()
+    else:
+        login_url = f"{API_BASE_URL}/auth/login"
+        st.sidebar.markdown(f"[Login with GitHub]({login_url})", unsafe_allow_html=False)
+        st.sidebar.caption("Sign in to track history and delta across runs.")
+
+
+# ---------------------------------------------------------------------------
+# V2 History helpers
+# ---------------------------------------------------------------------------
+
+
+def _delta_badge(delta: dict[str, Any] | None) -> str:
+    """Format a compact delta badge string for the history sidebar."""
+    if not delta:
+        return ""
+    fixed = len(delta.get("fixed") or [])
+    new = len(delta.get("new") or [])
+    still = len(delta.get("still_open") or [])
+    parts = []
+    if fixed:
+        parts.append(f"↓{fixed} fixed")
+    if new:
+        parts.append(f"↑{new} new")
+    if still:
+        parts.append(f"={still} open")
+    return " · ".join(parts) if parts else "no change"
+
+
+def _show_history_sidebar() -> None:
+    """Fetch and render the last 10 analyses for the authenticated user."""
+    if not _is_authenticated():
+        return
+    try:
+        resp = httpx.get(
+            f"{API_BASE_URL}/analyses",
+            headers=_auth_headers(),
+            params={"limit": 10},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        analyses: list[dict[str, Any]] = resp.json()
+    except httpx.HTTPError:
+        return
+
+    if not analyses:
+        return
+
+    st.sidebar.divider()
+    st.sidebar.subheader("Recent analyses")
+    for item in analyses:
+        aid = item.get("analysis_id", "")
+        repo = item.get("repository_url", "")
+        short_repo = repo.split("/")[-1] if "/" in repo else repo
+        delta = item.get("delta")
+        badge = _delta_badge(delta)
+        label = f"{short_repo[:28]}"
+        if badge:
+            label += f"\n{badge}"
+        if st.sidebar.button(label, key=f"hist_{aid}"):
+            st.session_state["analysis_id"] = aid
+            st.rerun()
+
 
 def _api(method: str, path: str, *, json_payload: object | None = None) -> httpx.Response:
     with httpx.Client(timeout=httpx.Timeout(30.0)) as client:
@@ -162,7 +274,9 @@ def _show_recommendations(report: dict[str, Any]) -> None:
         st.subheader("Migration Phases")
         for i, phase in enumerate(phases, 1):
             p = phase if isinstance(phase, dict) else {"description": str(phase)}
-            with st.expander(f"Phase {i}: {p.get('name', p.get('phase', 'Phase'))}", expanded=i == 1):
+            with st.expander(
+                f"Phase {i}: {p.get('name', p.get('phase', 'Phase'))}", expanded=i == 1
+            ):
                 st.write(p.get("description") or p.get("summary") or "")
                 files = _as_list(p.get("file_paths") or p.get("steps"))
                 for f in files:
@@ -175,11 +289,13 @@ def _show_recommendations(report: dict[str, Any]) -> None:
         rows = []
         for item in worklist:
             w = item if isinstance(item, dict) else {"path": str(item)}
-            rows.append({
-                "file": w.get("file_path") or w.get("path") or "",
-                "priority": w.get("priority") or w.get("change_type") or "",
-                "findings": w.get("findings_count") or "",
-            })
+            rows.append(
+                {
+                    "file": w.get("file_path") or w.get("path") or "",
+                    "priority": w.get("priority") or w.get("change_type") or "",
+                    "findings": w.get("findings_count") or "",
+                }
+            )
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
     # Dependency actions
@@ -187,7 +303,11 @@ def _show_recommendations(report: dict[str, Any]) -> None:
     if dep_actions:
         st.subheader("Dependency Actions")
         for item in dep_actions:
-            st.write(f"- {item}" if isinstance(item, str) else f"- {item.get('action','')}: `{item.get('package','')}`")
+            st.write(
+                f"- {item}"
+                if isinstance(item, str)
+                else f"- {item.get('action', '')}: `{item.get('package', '')}`"
+            )
 
     # Checklists
     for label, key in (
@@ -262,8 +382,16 @@ def _download_text(analysis_id: str, suffix: str) -> str:
 
 
 st.set_page_config(page_title="UpgradePilot", layout="wide")
+
+# Handle GitHub OAuth callback before any UI renders
+_handle_oauth_callback()
+
 st.title("UpgradePilot")
 st.caption("Pydantic v1 to v2 migration intelligence")
+
+# V2: auth + history sidebars
+_show_auth_sidebar()
+_show_history_sidebar()
 
 with st.sidebar:
     st.header("Analysis")
@@ -297,17 +425,23 @@ if not analysis_id:
     st.info("Enter a public GitHub repository URL to start an analysis.")
 else:
     import time as _time
+
     status = _safe_get(f"/analyses/{analysis_id}")
     if status:
         current_status = status.get("status") or "unknown"
         st.progress(float(status.get("progress") or 0.0))
-        st.caption(
-            f"Stage: {status.get('current_stage') or 'queued'} | "
-            f"Status: {current_status}"
-        )
+        st.caption(f"Stage: {status.get('current_stage') or 'queued'} | Status: {current_status}")
         if current_status == "running":
             _time.sleep(2)
             st.rerun()
+        # V2: show delta badge if this run has a previous comparison
+        analysis_meta = _safe_get(f"/analyses/{analysis_id}")
+        if analysis_meta:
+            delta = analysis_meta.get("delta")
+            if delta:
+                badge = _delta_badge(delta)
+                st.info(f"Delta vs previous run: **{badge}**")
+
         report = _safe_get(f"/analyses/{analysis_id}/report")
         if report:
             facts, evidence, interpretation, recommendations, validation, exports = st.tabs(
