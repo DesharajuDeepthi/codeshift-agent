@@ -12,9 +12,7 @@ Create Date: 2026-07-19
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision = "0003"
 down_revision = "0002"
@@ -47,14 +45,12 @@ def upgrade() -> None:
     # onto the legacy sentinel user, then drop the permissive default so all
     # new inserts must carry a real user_id.
     op.execute(
-        "UPDATE analyses SET user_id = '00000000-0000-0000-0000-000000000000' "
-        "WHERE user_id IS NULL"
+        "UPDATE analyses SET user_id = '00000000-0000-0000-0000-000000000000' WHERE user_id IS NULL"
     )
     op.execute("ALTER TABLE analyses ALTER COLUMN user_id DROP DEFAULT")
     op.execute("CREATE INDEX IF NOT EXISTS ix_analyses_user_id ON analyses (user_id)")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_analyses_thread_id "
-        "ON analyses (thread_id, created_at DESC)"
+        "CREATE INDEX IF NOT EXISTS ix_analyses_thread_id ON analyses (thread_id, created_at DESC)"
     )
 
 

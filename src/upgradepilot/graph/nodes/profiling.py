@@ -132,8 +132,8 @@ async def profile_repository(state: UpgradePilotState) -> dict[str, Any]:
     try:
         from pathlib import Path
 
-        from upgradepilot.models.snapshot import RepositorySnapshot
         from upgradepilot.analyzers.repository_profiler import profile_repository
+        from upgradepilot.models.snapshot import RepositorySnapshot
 
         snapshot = RepositorySnapshot.model_validate(snapshot_dict)
         profile = profile_repository(Path(snapshot.workspace_path))
@@ -205,8 +205,7 @@ async def select_migration_pack(state: UpgradePilotState) -> dict[str, Any]:
         else:
             # Check if already on v2 (constraint lower bound >= 2)
             already_v2 = any(
-                dep.constraint and dep.constraint.lower and
-                dep.constraint.lower.startswith("2")
+                dep.constraint and dep.constraint.lower and dep.constraint.lower.startswith("2")
                 for dep in pydantic_deps
             )
             if already_v2:

@@ -9,7 +9,6 @@ Parallel analysis branch nodes:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from upgradepilot.graph.nodes._helpers import (
@@ -102,12 +101,14 @@ async def parse_dependencies(state: UpgradePilotState) -> dict[str, Any]:
         }
 
     try:
-        from upgradepilot.models.profile import RepositoryProfile
-        from upgradepilot.models.snapshot import RepositorySnapshot
-
         from pathlib import Path
 
-        from upgradepilot.analyzers.manifest_parser import parse_pyproject_toml, parse_requirements_txt
+        from upgradepilot.analyzers.manifest_parser import (
+            parse_pyproject_toml,
+            parse_requirements_txt,
+        )
+        from upgradepilot.models.profile import RepositoryProfile
+        from upgradepilot.models.snapshot import RepositorySnapshot
 
         snapshot = RepositorySnapshot.model_validate(snapshot_dict)
         profile = RepositoryProfile.model_validate(profile_dict)

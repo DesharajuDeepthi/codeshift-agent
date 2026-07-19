@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from upgradepilot.delta.detector import DeltaReport, compute_delta
+from upgradepilot.delta.detector import compute_delta
 
 
 def _finding(rule_id: str, file_path: str, line: int) -> dict:
@@ -83,7 +81,8 @@ def test_summary_string():
 
 def test_commit_shas_recorded():
     report = compute_delta(
-        PREV, CURR,
+        PREV,
+        CURR,
         previous_commit_sha="abc123",
         current_commit_sha="def456",
     )

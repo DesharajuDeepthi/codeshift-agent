@@ -28,11 +28,7 @@ class DeltaReport:
 
     @property
     def summary(self) -> str:
-        return (
-            f"{len(self.fixed)} fixed, "
-            f"{len(self.new)} new, "
-            f"{len(self.still_open)} still open"
-        )
+        return f"{len(self.fixed)} fixed, {len(self.new)} new, {len(self.still_open)} still open"
 
 
 def _key(finding: dict[str, Any]) -> FindingKey:
