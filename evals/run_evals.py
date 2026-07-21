@@ -28,7 +28,6 @@ from evals.scorers import ALL_SCORERS
 # ---------------------------------------------------------------------------
 # Inline benchmark examples (no LangSmith dependency to pull them)
 # ---------------------------------------------------------------------------
-
 from upgradepilot.graph.state import FIXTURE_SUPPORTED, FIXTURE_UNSUPPORTED  # noqa: E402
 
 BENCHMARK_EXAMPLES = [
@@ -67,6 +66,7 @@ BENCHMARK_EXAMPLES = [
 # Pipeline runner
 # ---------------------------------------------------------------------------
 
+
 async def _run_pipeline(inputs: dict[str, Any]) -> dict[str, Any]:
     from upgradepilot.graph.build import build_graph
     from upgradepilot.graph.state import make_initial_state
@@ -94,6 +94,7 @@ async def _run_pipeline(inputs: dict[str, Any]) -> dict[str, Any]:
 # LangSmith result upload (optional — skipped if no API key)
 # ---------------------------------------------------------------------------
 
+
 def _push_to_langsmith(
     repo: str,
     scores: dict[str, tuple[float, str]],
@@ -104,6 +105,7 @@ def _push_to_langsmith(
         return
     try:
         from langsmith import Client
+
         from evals.dataset import DATASET_NAME
 
         client = Client(api_key=api_key)
@@ -112,7 +114,8 @@ def _push_to_langsmith(
             return
         dataset_id = datasets[0].id
         examples = [
-            e for e in client.list_examples(dataset_id=dataset_id)
+            e
+            for e in client.list_examples(dataset_id=dataset_id)
             if repo in str(e.inputs.get("repository_url", ""))
         ]
         if not examples:
@@ -143,6 +146,7 @@ def _push_to_langsmith(
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail-under", type=float, default=0.0)
@@ -166,28 +170,30 @@ def main() -> None:
             r = scorer(output, expected)
             results[r["key"]] = (float(r["score"]), r.get("comment", ""))
 
-        print(f"  Applicability: {output.get('applicability_status')} | "
-              f"Status: {output.get('status')} | {elapsed}s")
+        print(
+            f"  Applicability: {output.get('applicability_status')} | "
+            f"Status: {output.get('status')} | {elapsed}s"
+        )
         print(f"  {'Scorer':<28} {'Score':>6}   Detail")
-        print(f"  {'-'*62}")
+        print(f"  {'-' * 62}")
         for key, (score, comment) in results.items():
             bar = "█" * int(score * 10) + "░" * (10 - int(score * 10))
             status = "PASS" if score >= 0.8 else "WARN" if score >= 0.5 else "FAIL"
             print(f"  {key:<28} {score:>6.3f}  [{bar}] {status}  {comment}")
 
         avg = sum(s for s, _ in results.values()) / len(results)
-        print(f"  {'─'*62}")
+        print(f"  {'─' * 62}")
         print(f"  {'Example average':<28} {avg:>6.3f}")
         all_scores.extend(s for s, _ in results.values())
 
         _push_to_langsmith(repo, results, args.experiment_prefix)
 
     overall = sum(all_scores) / len(all_scores) if all_scores else 0.0
-    print(f"\n{'='*64}")
+    print(f"\n{'=' * 64}")
     print(f"OVERALL AVERAGE SCORE: {overall:.3f}")
     ci_status = "PASS" if overall >= args.fail_under else "FAIL"
     print(f"CI THRESHOLD ({args.fail_under:.2f}):    {ci_status}")
-    print(f"{'='*64}")
+    print(f"{'=' * 64}")
 
     if overall < args.fail_under:
         sys.exit(1)

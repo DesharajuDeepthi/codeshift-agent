@@ -11,11 +11,11 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from upgradepilot import __version__
 from upgradepilot.api.analyses import router as analyses_router
-from upgradepilot.db import history as hist
 from upgradepilot.api.health import router as health_router
-from upgradepilot.auth.router import router as auth_router
 from upgradepilot.api.middleware import PrometheusMiddleware
+from upgradepilot.auth.router import router as auth_router
 from upgradepilot.config import get_settings
+from upgradepilot.db import history as hist
 from upgradepilot.observability.logging import configure_logging, get_logger
 from upgradepilot.observability.metrics import REGISTRY
 from upgradepilot.observability.tracing import configure_langsmith

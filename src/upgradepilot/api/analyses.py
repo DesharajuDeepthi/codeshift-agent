@@ -216,7 +216,7 @@ STORE = _AnalysisStore()
 @router.get("", response_model=list[dict[str, Any]])
 async def list_analyses(
     limit: int = Query(default=10, ge=1, le=50),
-    user_id: uuid.UUID = Depends(require_user_id),
+    user_id: uuid.UUID = Depends(require_user_id),  # noqa: B008
 ) -> list[dict[str, Any]]:
     """Return the authenticated user's most recent analyses."""
     return hist.list_analyses(user_id=user_id, limit=limit)
@@ -226,7 +226,7 @@ async def list_analyses(
 async def create_analysis(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
-    user_id: uuid.UUID | None = Depends(optional_user_id),
+    user_id: uuid.UUID | None = Depends(optional_user_id),  # noqa: B008
 ) -> AnalysisCreateResponse:
     """Create an analysis and start graph execution."""
     record = await STORE.create(request)

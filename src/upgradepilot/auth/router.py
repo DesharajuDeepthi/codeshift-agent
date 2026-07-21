@@ -19,8 +19,8 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
-from upgradepilot.auth.jwt import _EXPIRES_SECONDS, create_access_token
-from upgradepilot.auth.models import GitHubUser, TokenResponse
+from upgradepilot.auth.jwt import create_access_token
+from upgradepilot.auth.models import GitHubUser
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -88,10 +88,7 @@ def callback(
     user_id = _upsert_user(gh_user)
     access_token = create_access_token(user_id)
     redirect_url = (
-        f"{_UI_BASE_URL}"
-        f"?access_token={access_token}"
-        f"&login={gh_user.login}"
-        f"&token_type=bearer"
+        f"{_UI_BASE_URL}?access_token={access_token}&login={gh_user.login}&token_type=bearer"
     )
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
