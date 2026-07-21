@@ -21,7 +21,9 @@ import sys
 import time
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_root, "src"))
+sys.path.insert(0, _root)  # so `evals` package is importable
 
 from evals.scorers import ALL_SCORERS
 
