@@ -79,15 +79,16 @@ def _add_state(state: str) -> None:
     _pending_states.add(state)
 
 
-def test_callback_returns_jwt():
+def test_callback_returns_redirect_with_jwt():
+    """Callback now redirects to UI with JWT in query params instead of returning JSON."""
     state = "valid-state-xyz"
     _add_state(state)
     with patch("upgradepilot.auth.router.httpx.Client", return_value=_mock_httpx()):
         resp = client.get(f"/auth/callback?code=abc&state={state}")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert "access_token" in body
-    assert body["token_type"] == "bearer"
+    assert resp.status_code == 302
+    location = resp.headers["location"]
+    assert "access_token=" in location
+    assert "login=testuser" in location
 
 
 def test_callback_jwt_is_valid():
@@ -95,7 +96,9 @@ def test_callback_jwt_is_valid():
     _add_state(state)
     with patch("upgradepilot.auth.router.httpx.Client", return_value=_mock_httpx()):
         resp = client.get(f"/auth/callback?code=abc&state={state}")
-    token = resp.json()["access_token"]
+    assert resp.status_code == 302
+    location = resp.headers["location"]
+    token = dict(p.split("=", 1) for p in location.split("?", 1)[1].split("&"))["access_token"]
     payload = decode_access_token(token)
     assert "sub" in payload
     assert uuid.UUID(payload["sub"])  # must be a valid UUID
@@ -112,18 +115,19 @@ def test_callback_state_consumed_after_use():
     _add_state(state)
     with patch("upgradepilot.auth.router.httpx.Client", return_value=_mock_httpx()):
         resp1 = client.get(f"/auth/callback?code=abc&state={state}")
-    assert resp1.status_code == 200
+    assert resp1.status_code == 302
     resp2 = client.get(f"/auth/callback?code=abc&state={state}")
     assert resp2.status_code == 400
 
 
 def test_callback_github_token_not_in_response():
-    """GitHub token must not leak into our JWT response."""
+    """GitHub token must not leak into the redirect URL."""
     state = "leak-check-state"
     _add_state(state)
     mock = _mock_httpx(github_token="secret-gh-token")
     with patch("upgradepilot.auth.router.httpx.Client", return_value=mock):
         resp = client.get(f"/auth/callback?code=abc&state={state}")
+    assert "secret-gh-token" not in resp.headers.get("location", "")
     assert "secret-gh-token" not in resp.text
 
 
