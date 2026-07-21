@@ -25,11 +25,7 @@ _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_root, "src"))
 sys.path.insert(0, _root)  # so `evals` package is importable
 
-from evals.scorers import ALL_SCORERS
-
-# ---------------------------------------------------------------------------
-# Inline benchmark examples (no LangSmith dependency to pull them)
-# ---------------------------------------------------------------------------
+from evals.scorers import ALL_SCORERS  # noqa: E402
 from upgradepilot.graph.state import FIXTURE_SUPPORTED, FIXTURE_UNSUPPORTED  # noqa: E402
 
 BENCHMARK_EXAMPLES = [
