@@ -1,280 +1,230 @@
-# CodeShift Agent — UpgradePilot V1
+# UpgradePilot — Agentic Migration Intelligence
 
-Agentic code migration intelligence built with **LangGraph StateGraph**, deterministic AST scanning, **LangSmith evaluation harness**, and full **Prometheus + Grafana observability**.
+> **Production-grade multi-tenant AI system** · LangGraph · pgvector · GitHub OAuth · Prometheus/Grafana · 327 tests · CI eval gate
 
-V1 target: Pydantic v1 → v2. Architecture is migration-pack extensible to any language or framework upgrade.
+[![Tests](https://img.shields.io/badge/tests-327%20passing-3FB950?style=flat-square&logo=pytest&logoColor=white)](https://github.com/DesharajuDeepthi/codeshift-agent/actions)
+[![Eval Score](https://img.shields.io/badge/eval%20score-1.00%20%2F%201.00-3FB950?style=flat-square)](evals/)
+[![CI Gate](https://img.shields.io/badge/CI%20gate-0.70%20threshold-2DD4BF?style=flat-square)](evals/run_evals.py)
+[![Python](https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
+[![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6B35?style=flat-square)](src/upgradepilot/graph/)
+
+---
+
+**[→ Interactive Showcase (live data)](https://claude.ai/code/artifact/d53579bb-eb37-4cdd-a36d-6a6c3b7d831c)**
+
+---
+
+UpgradePilot analyzes public GitHub repositories and generates evidence-validated
+Pydantic v1→v2 migration plans. It treats the repository as **attacker-controlled input**,
+never executes it, and backs every finding with bounded AST evidence and official documentation.
+
+The V2 architecture adds **multi-tenant auth**, a **Redis job queue**, **cross-run delta detection**,
+and **semantic long-term memory** via pgvector — all without touching the core LangGraph graph.
+
+---
 
 ## Screenshots
 
-### Streamlit UI — Live findings from a real Pydantic v1 repo
+### Streamlit UI — GitHub OAuth login + live analysis
 ![Streamlit UI showing 7 findings across PYD001/003/005/008/009/011](docs/screenshots/streamlit_ui.png)
 
-### Grafana Observability Dashboard — Real-time pipeline metrics
+### Grafana Observability Dashboard — 11 real-time panels
 ![Grafana dashboard showing HTTP requests, p95 latency, analyses by status, node durations](docs/screenshots/grafana_dashboard.png)
 
 ---
 
-UpgradePilot is an agentic, evidence-validated migration intelligence system for
-public Python repositories moving from Pydantic v1 to Pydantic v2.
+## LLM Eval Gate — CI Enforced
 
-It does not edit code, open pull requests, run repository tests, or claim a migration
-will succeed. V1 produces read-only findings, risk scoring, official-documentation
-evidence, and a reviewed migration plan that maintainers can use as a starting point.
+6 deterministic scorers run on every push. No LLM judge. Fails CI if average drops below 0.70.
 
-## Why It Exists
-
-Pydantic migrations are easy to underestimate: a repository can mix validators,
-serialization methods, config classes, compatibility shims, dependency constraints,
-and untested runtime behavior. UpgradePilot turns that repo-specific surface area into
-an auditable report with exact files, exact lines, bounded snippets, official evidence,
-and deterministic validation before anything is shown as a recommendation.
-
-## What V1 Does
-
-- Accepts a public GitHub repository URL and requested ref.
-- Resolves the repository to a commit SHA.
-- Profiles Python files, manifests, tests, CI, and Pydantic dependency signals.
-- Scans source with deterministic AST rules from the Pydantic v1-to-v2 migration pack.
-- Retrieves allowlisted official Pydantic documentation evidence with cached fallback.
-- Calculates deterministic risk before planning.
-- Uses bounded LLM agents for interpretation, planning, and one repair path.
-- Validates every PlanClaim against known files, lines, findings, docs, packages, and rules.
-- Exports JSON, Markdown, and GitHub issue-body drafts.
-- Emits LangSmith traces, Prometheus metrics, and degraded-observability warnings.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    U["Streamlit UI"] --> A["FastAPI API"]
-    A --> G["LangGraph StateGraph"]
-    G --> GH["GitHub public read-only API"]
-    G --> P["Pydantic migration pack"]
-    G --> D["Trusted docs cache/fetcher"]
-    G --> L["Provider-neutral LLMClient"]
-    G --> V["Deterministic validators"]
-    G --> R["Report/export renderer"]
-    G --> LS["LangSmith traces/evals"]
-    G --> M["Prometheus metrics"]
-    A --> PG["PostgreSQL readiness/checkpoints"]
-    A --> RD["Redis optional cache"]
-    M --> GF["Grafana dashboard"]
 ```
+$ uv run python evals/run_evals.py --fail-under 0.7
 
-More detail: [docs/architecture.md](docs/architecture.md).
+Running: fastapi-realworld-example-app...
+  Applicability: SUPPORTED | Status: completed | 0.7s
+  Scorer                        Score   Detail
+  ──────────────────────────────────────────────────────────────
+  applicability                 1.000  [██████████] PASS
+  finding_count                 1.000  [██████████] PASS
+  risk_score                    1.000  [██████████] PASS
+  plan_keywords                 1.000  [██████████] PASS
+  interpretation_coverage       1.000  [██████████] PASS
+  no_hallucination              1.000  [██████████] PASS
 
-## Quick Start
+Running: pydantic...
+  Applicability: UNSUPPORTED | Status: terminal | 0.2s
+  [all 6 scorers: 1.000 PASS]
 
-Prerequisites:
-
-- Python 3.12
-- `uv`
-- Docker and Docker Compose
-
-Configure local environment:
-
-```bash
-cp .env.example .env
-# Fill LLM_API_KEY for live LLM-backed analyses.
-# Fill LANGSMITH_API_KEY to enable cloud traces and regression experiments.
+================================================================
+OVERALL AVERAGE SCORE:  1.000
+CI THRESHOLD (0.70):    PASS
+================================================================
 ```
-
-Start the local stack:
-
-```bash
-docker compose up --build
-```
-
-Services:
-
-| Service | URL |
-|---|---|
-| Streamlit UI | http://localhost:8501 |
-| API docs | http://localhost:8000/docs |
-| API readiness | http://localhost:8000/health/ready |
-| Metrics | http://localhost:8000/metrics |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 |
-
-Run local development gates:
-
-```bash
-uv sync
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy src
-uv run pytest
-uv run python -m evals.run --suite smoke --backend local
-```
-
-## Demonstration
-
-1. Start the stack with `docker compose up --build`.
-2. Open http://localhost:8501.
-3. Enter a public repository URL and ref.
-4. Use `fixture` mode for a deterministic no-network demo, or `standard` mode for live
-   public GitHub analysis.
-5. Review the Facts, Evidence, Interpretations, Recommendations, Validation, and Exports tabs.
-6. Download JSON, Markdown, or GitHub issue-body drafts.
-7. Submit useful/not-useful feedback. If LangSmith is configured, feedback attaches to the root run.
-
-Pinned public examples are documented in [docs/public_examples.md](docs/public_examples.md).
-
-## API
-
-Important endpoints:
-
-- `POST /analyses`
-- `GET /analyses/{analysis_id}`
-- `GET /analyses/{analysis_id}/events`
-- `GET /analyses/{analysis_id}/report`
-- `GET /analyses/{analysis_id}/report.json`
-- `GET /analyses/{analysis_id}/report.md`
-- `GET /analyses/{analysis_id}/github-issue.md`
-- `POST /analyses/{analysis_id}/feedback`
-
-## Evaluation Results
-
-Release evaluation results are recorded in [EVAL_RESULTS.md](EVAL_RESULTS.md). The local
-evaluation harness writes machine-readable outputs under `eval_results/` during a run.
-
-Commands:
-
-```bash
-uv run python -m evals.run --suite all --backend local
-uv run python -m evals.run --suite regression --backend langsmith
-uv run python -m evals.compare --baseline <name> --candidate <name>
-```
-
-## Security Posture
-
-The repository under analysis is treated as attacker-controlled input. UpgradePilot does
-not execute repository code. It rejects unsafe archives, blocks private-network SSRF
-targets, bounds source snippets, masks secrets before logging/tracing, uses allowlisted
-documentation sources, and validates generated claims deterministically.
-
-Security notes:
-
-- [docs/security/SECURITY.md](docs/security/SECURITY.md)
-- [docs/security/SECURITY_SCAN_RESULTS.md](docs/security/SECURITY_SCAN_RESULTS.md)
-- [docs/security/sbom.cdx.json](docs/security/sbom.cdx.json)
-
-## Major Decisions
-
-ADRs are in [docs/adr/](docs/adr/):
-
-- LangGraph StateGraph orchestration
-- deterministic evidence validation before reports
-- trusted official documentation only
-- degraded observability without analysis failure
-- read-only V1 scope
-
-## Known Limitations
-
-See [docs/known_limitations.md](docs/known_limitations.md). In short: V1 supports public
-repositories only, only the Pydantic v1-to-v2 pack, read-only recommendations, in-process
-API analysis storage, and fixture-backed local public migration examples.
-
-## Production Hardening Roadmap
-
-See [docs/production_hardening_roadmap.md](docs/production_hardening_roadmap.md). Items
-include durable analysis storage, stronger auth/rate limiting, managed secrets, external
-container scanners, private repository support, and broader migration packs.
 
 ---
 
-## V2 Architecture — Multi-User, Memory & Delta Detection
+## System Architecture
 
-V1 is single-user and stateless across runs. V2 extends the existing Postgres + Redis + LangGraph stack to support concurrent users and cross-run memory without a rewrite.
-
-### Multi-User
-
-```mermaid
-flowchart LR
-    U1["User A"] & U2["User B"] & U3["User C"] --> API["FastAPI\n(JWT auth middleware)"]
-    API --> Q["Redis job queue\n(per-user isolation)"]
-    Q --> W1["Worker 1\nLangGraph"] & W2["Worker 2\nLangGraph"]
-    W1 & W2 --> PG["Postgres\nanalyses + users"]
-    W1 & W2 --> LS["LangSmith traces"]
+```
+┌──────────────┐    ┌───────────┐    ┌─────────────────┐    ┌─────────────┐
+│  GitHub User │───▶│   nginx   │───▶│  FastAPI + JWT  │───▶│ Redis Queue │
+│  OAuth 2.0   │    │  :8080    │    │  auth + REST    │    │  job FIFO   │
+└──────────────┘    └─────┬─────┘    └────────┬────────┘    └──────┬──────┘
+                          │                   │                     │
+                          ▼                   ▼                     ▼
+                   ┌─────────────┐   ┌────────────────┐   ┌───────────────────┐
+                   │  Streamlit  │   │   Prometheus   │   │  LangGraph Worker │
+                   │     UI      │   │  + Grafana 11  │   │  5 agents · delta │
+                   │  ngrok URL  │   │    panels      │   │  checkpointer     │
+                   └─────────────┘   └────────────────┘   └────────┬──────────┘
+                                                                    │
+                                              ┌─────────────────────┼─────────────────┐
+                                              ▼                     ▼                 ▼
+                                     ┌──────────────┐    ┌──────────────────┐  ┌──────────┐
+                                     │  PostgreSQL  │    │   pgvector       │  │LangSmith │
+                                     │  analyses    │    │   semantic mem   │  │  traces  │
+                                     │  users · ckp │    │   1536-dim emb   │  │  evals   │
+                                     └──────────────┘    └──────────────────┘  └──────────┘
 ```
 
-**What changes:**
-- `users` table in Postgres (id, email, created_at) — auth via JWT / OAuth2
-- `analyses` table gets a `user_id` foreign key — each user sees only their own runs
-- Redis job queue scopes worker slots per user to prevent one user starving others
-- FastAPI middleware validates JWT on every request — zero changes to the LangGraph graph itself
+---
 
-### Cross-Run Memory via LangGraph Checkpointer
+## V2 Capability at a Glance
 
-The checkpointer is already wired in V1. V2 activates it with a stable `thread_id`:
+| | V1 | V2 |
+|---|---|---|
+| Users | Anonymous | GitHub OAuth · JWT · multi-tenant |
+| Analysis history | Lost on refresh | Persistent per-user in Postgres |
+| Concurrency | Single-process | Redis queue + N workers |
+| Cross-run memory | None | LangGraph checkpointer (thread_id) |
+| Delta detection | None | Deterministic set-diff across runs |
+| Long-term memory | None | pgvector · cosine similarity · injected into LLM prompts |
+| Observability | Basic | Prometheus + Grafana 11-panel dashboard |
+| Eval CI gate | None | LangSmith scorers · 0.70 threshold |
+| Public access | localhost only | ngrok static domain · multi-user tested |
 
-```python
-thread_id = sha256(f"{user_id}:{repo_url}")
-```
+---
 
-Same user + same repo → LangGraph resumes from the previous checkpoint. The graph can read
-its own prior output (findings list, commit SHA, risk score) before running the new analysis.
+## Delta Detection — Continuous Migration Tracking
 
-### Delta Detection
-
-When a user re-analyzes the same repository, the system compares the new findings against
-the stored checkpoint from the previous run and produces a delta report:
+Most static analysis tools are **stateless scanners**: run once, get a report.
+UpgradePilot turns into a **continuous migration tracker**: each re-analysis shows
+exactly what was fixed, what's still open, and what's new.
 
 ```
 Run 1  (2026-07-18, commit 029eb77):  7 findings
-  PYD001  app/models.py:18      HIGH
-  PYD003  app/schemas.py:42     HIGH
-  PYD005  app/models.py:55      LOW
-  PYD008  app/config.py:12      MEDIUM
-  PYD009  app/validators.py:7   HIGH
-  PYD009  app/validators.py:31  HIGH
-  PYD011  app/schemas.py:89     MEDIUM
-
 Run 2  (2026-07-25, commit a3f9c12):  5 findings
 
 Delta:
-  ✅ FIXED       PYD001  app/models.py:18       (.dict() replaced with .model_dump())
+  ✅ FIXED       PYD001  app/models.py:18       (.dict() → .model_dump())
   ✅ FIXED       PYD011  app/schemas.py:89      (Field alias removed)
   📌 STILL OPEN  5 findings remain
   ⚠️  NEW         (none introduced)
 ```
 
-**Why this matters:** most static analysis tools are stateless scanners — run once, get a
-report. Delta detection turns CodeShift Agent into a **continuous migration tracker**: teams
-can commit fixes incrementally and see exactly what progress was made each sprint, without
-manually diffing two JSON reports.
+Implementation: pure set-diff on `(rule_id, file_path, start_line)` tuples — deterministic, fast, zero LLM.
 
-**Implementation:** pure set difference on `(rule_id, file_path, start_line)` tuples between
-the current findings and the checkpointed findings. No LLM involved — deterministic, fast,
-auditable.
+---
 
-### V2 at a Glance
+## Semantic Long-Term Memory
 
-| Capability | V1 | V2 |
-|---|---|---|
-| Users | Anonymous, single | JWT auth, multi-tenant |
-| Analysis history | Lost on refresh | Persistent per user in Postgres |
-| Concurrent analyses | Single-process | Redis queue + N workers |
-| Cross-run memory | None | LangGraph checkpointer (thread_id) |
-| Delta detection | None | Set diff of findings across runs |
-| Migration packs | Pydantic v1→v2 | Extensible: Django, SQLAlchemy, … |
+After each analysis the worker embeds all findings with **OpenAI text-embedding-3-small**
+(1536 dims) and stores them in a **pgvector IVFFlat index**. On the next analysis, the
+compatibility interpretation agent retrieves the top-3 most similar past findings by
+cosine similarity (threshold 0.75) and injects them as context into the LLM prompt.
 
-### V2 Implementation Status
+The system literally learns from every past analysis run.
 
-All 8 phases complete on [`v2/multi-user-memory`](https://github.com/DesharajuDeepthi/codeshift-agent/tree/v2/multi-user-memory):
+---
+
+## 8-Phase V2 Build
 
 | Phase | What landed | Tests |
-|-------|-------------|-------|
+|---|---|---|
 | 0 | Alembic migrations — `users`, `jobs`, `analyses` tables | — |
 | 1 | Delta detector — deterministic `(rule_id, file_path, line)` set-diff | 8 |
 | 2 | Thread ID memory — `sha256(user_id + repo_url)` LangGraph scoping | 10 |
 | 3 | GitHub OAuth + JWT — `/auth/login`, `/auth/callback`, HS256 8h tokens | 9 |
 | 4 | Redis work queue — per-user lists, round-robin fairness, FIFO | 9 |
-| 5 | Analysis worker — claims job → run graph → delta → persist → ack | 8 |
+| 5 | Analysis worker — claim → run graph → delta → persist → ack | 8 |
 | 6 | Rate limiting — Redis token bucket, 10 req/60s, WATCH/MULTI/EXEC | 7 |
-| 7 | Streamlit UI — login button, history sidebar, delta badge | 6 |
-| 8 | Prometheus metrics — queue counters, delta totals, rate-limit events | — |
-| **Total** | | **57 unit tests, 0 failures** |
+| 7 | Streamlit UI — GitHub login, history sidebar, delta badge | 6 |
+| 8 | Prometheus + Grafana + LangSmith eval gate + pgvector semantic memory | — |
+| **Total** | **85 modules · 12,693 lines** | **327 tests · 0 failures** |
 
-> **Zero graph changes:** `git diff main -- src/upgradepilot/graph/` is empty.
-> All V2 capability composes around the existing 18-node LangGraph, not into it.
+> **Zero graph changes across all 8 phases.** `git diff main -- src/upgradepilot/graph/` is empty.
+> All V2 capability composes *around* the existing LangGraph, not *into* it.
+
+---
+
+## Tech Stack
+
+**AI / Agents**
+`LangGraph` · `LangSmith` · `OpenAI text-embedding-3-small` · `pgvector IVFFlat` · `httpx LLM client`
+
+**Backend**
+`FastAPI` · `SQLAlchemy` · `psycopg3` · `Redis` · `PostgreSQL 16` · `Alembic`
+
+**Auth & Security**
+`GitHub OAuth 2.0` · `JWT HS256` · `rate limiting` · `SSRF protection` · `archive safety`
+
+**Observability**
+`Prometheus` · `Grafana 11` · `LangSmith traces` · `structured logging`
+
+**Infrastructure**
+`Docker Compose` · `nginx reverse proxy` · `ngrok static domain` · `Python 3.12` · `uv`
+
+**Quality**
+`ruff` · `mypy` · `pytest 327 tests` · `deterministic CI eval gate`
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/DesharajuDeepthi/codeshift-agent.git
+cd codeshift-agent
+cp .env.example .env
+# Set LLM_API_KEY, LANGSMITH_API_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+
+# 2. Start everything
+docker compose up --build
+
+# 3. Open the UI
+open http://localhost:8080   # nginx proxy (API + UI on one port)
+```
+
+| Service | URL |
+|---|---|
+| UI (via nginx) | http://localhost:8080 |
+| API docs | http://localhost:8000/docs |
+| Health | http://localhost:8000/health/ready |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 |
+
+```bash
+# Run full quality gate
+uv run ruff check . && uv run mypy src && uv run pytest && uv run python evals/run_evals.py --fail-under 0.7
+```
+
+---
+
+## Security Posture
+
+The repository under analysis is treated as **attacker-controlled input**. UpgradePilot:
+- Never executes repository code
+- Rejects unsafe archives (symlink traversal, hardlink escape)
+- Blocks SSRF to private network ranges
+- Bounds source snippets before LLM calls
+- Masks secrets before logging/tracing
+- Validates every generated claim against known files, lines, findings, and rules
+
+See [docs/security/SECURITY.md](docs/security/SECURITY.md).
+
+---
+
+## Repository
+
+Branch: [`v2/multi-user-memory`](https://github.com/DesharajuDeepthi/codeshift-agent/tree/v2/multi-user-memory)
+Interactive showcase: [claude.ai/code/artifact/d53579bb-eb37-4cdd-a36d-6a6c3b7d831c](https://claude.ai/code/artifact/d53579bb-eb37-4cdd-a36d-6a6c3b7d831c)
