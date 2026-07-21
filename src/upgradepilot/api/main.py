@@ -11,6 +11,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from upgradepilot import __version__
 from upgradepilot.api.analyses import router as analyses_router
+from upgradepilot.db import history as hist
 from upgradepilot.api.health import router as health_router
 from upgradepilot.auth.router import router as auth_router
 from upgradepilot.api.middleware import PrometheusMiddleware
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         hide_inputs=settings.langsmith_hide_inputs,
         hide_outputs=settings.langsmith_hide_outputs,
     )
+    hist.ensure_table()
     logger.info("UpgradePilot API started", extra={"event": "startup", "version": __version__})
     yield
     logger.info("UpgradePilot API stopped", extra={"event": "shutdown"})

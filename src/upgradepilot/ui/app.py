@@ -13,6 +13,11 @@ API_BASE_URL = os.getenv(
     "UPGRADEPILOT_API_URL",
     os.getenv("API_URL", "http://localhost:8000"),
 ).rstrip("/")
+
+# Browser-facing URL — used for links the user's browser must follow directly.
+# Inside Docker the API is reachable as http://api:8000, but browsers can't
+# resolve that hostname; PUBLIC_API_URL points to the host-accessible address.
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://localhost:8000").rstrip("/")
 JSON_REPORT_SUFFIX = "report.json"
 MARKDOWN_REPORT_SUFFIX = "report.md"
 GITHUB_ISSUE_SUFFIX = "github-issue.md"
@@ -35,26 +40,17 @@ def _is_authenticated() -> bool:
 
 
 def _handle_oauth_callback() -> None:
-    """Exchange GitHub OAuth code for a JWT if query params are present."""
+    """Store JWT from query params if the API redirected back here after OAuth."""
     params = st.query_params
-    code = params.get("code")
-    state = params.get("state")
-    if not code or not state:
+    access_token = params.get("access_token")
+    if not access_token:
         return
-    try:
-        resp = httpx.get(
-            f"{API_BASE_URL}/auth/callback",
-            params={"code": code, "state": state},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        st.session_state[_AUTH_TOKEN_KEY] = data["access_token"]
-        st.session_state[_AUTH_LOGIN_KEY] = data.get("login", "user")
-        st.query_params.clear()
-        st.rerun()
-    except httpx.HTTPError:
-        st.error("GitHub login failed. Please try again.")
+    # Clear all state so no stale analysis results show after fresh login
+    st.session_state.clear()
+    st.session_state[_AUTH_TOKEN_KEY] = access_token
+    st.session_state[_AUTH_LOGIN_KEY] = params.get("login", "user")
+    st.query_params.clear()
+    st.rerun()
 
 
 def _show_auth_sidebar() -> None:
@@ -64,11 +60,10 @@ def _show_auth_sidebar() -> None:
         login = st.session_state.get(_AUTH_LOGIN_KEY, "user")
         st.sidebar.caption(f"Signed in as **{login}**")
         if st.sidebar.button("Sign out"):
-            st.session_state.pop(_AUTH_TOKEN_KEY, None)
-            st.session_state.pop(_AUTH_LOGIN_KEY, None)
+            st.session_state.clear()
             st.rerun()
     else:
-        login_url = f"{API_BASE_URL}/auth/login"
+        login_url = f"{PUBLIC_API_URL}/auth/login"
         st.sidebar.markdown(f"[Login with GitHub]({login_url})", unsafe_allow_html=False)
         st.sidebar.caption("Sign in to track history and delta across runs.")
 
@@ -111,18 +106,20 @@ def _show_history_sidebar() -> None:
     except httpx.HTTPError:
         return
 
-    if not analyses:
-        return
-
     st.sidebar.divider()
     st.sidebar.subheader("Recent analyses")
+    if not analyses:
+        st.sidebar.caption("No analyses yet.")
+        return
+
     for item in analyses:
         aid = item.get("analysis_id", "")
         repo = item.get("repository_url", "")
         short_repo = repo.split("/")[-1] if "/" in repo else repo
+        item_status = item.get("status", "")
         delta = item.get("delta")
         badge = _delta_badge(delta)
-        label = f"{short_repo[:28]}"
+        label = f"{short_repo[:24]} [{item_status}]"
         if badge:
             label += f"\n{badge}"
         if st.sidebar.button(label, key=f"hist_{aid}"):
@@ -132,7 +129,12 @@ def _show_history_sidebar() -> None:
 
 def _api(method: str, path: str, *, json_payload: object | None = None) -> httpx.Response:
     with httpx.Client(timeout=httpx.Timeout(30.0)) as client:
-        response = client.request(method, f"{API_BASE_URL}{path}", json=json_payload)
+        response = client.request(
+            method,
+            f"{API_BASE_URL}{path}",
+            json=json_payload,
+            headers=_auth_headers(),
+        )
         response.raise_for_status()
         return response
 

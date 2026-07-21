@@ -61,14 +61,18 @@ def login() -> RedirectResponse:
     return RedirectResponse(url=f"{_GITHUB_AUTHORIZE_URL}?{query}")
 
 
-@router.get("/callback", response_model=TokenResponse)
+_UI_BASE_URL = os.environ.get("UI_BASE_URL", "http://localhost:8501")
+
+
+@router.get("/callback")
 def callback(
     code: str = Query(...),
     state: str = Query(...),
-) -> TokenResponse:
+) -> RedirectResponse:
     """
     Exchange GitHub OAuth code for an access token, fetch the user
-    profile, upsert the user record, and return a signed JWT.
+    profile, upsert the user record, and redirect back to the UI with
+    the JWT embedded as query params so Streamlit can store it in session.
     """
     if state not in _pending_states:
         raise HTTPException(
@@ -83,7 +87,13 @@ def callback(
 
     user_id = _upsert_user(gh_user)
     access_token = create_access_token(user_id)
-    return TokenResponse(access_token=access_token, expires_in=_EXPIRES_SECONDS)
+    redirect_url = (
+        f"{_UI_BASE_URL}"
+        f"?access_token={access_token}"
+        f"&login={gh_user.login}"
+        f"&token_type=bearer"
+    )
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
 
 def _exchange_code(code: str) -> str:

@@ -11,12 +11,14 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, cast
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from upgradepilot.auth.deps import optional_user_id, require_user_id
 from upgradepilot.config import AnalysisMode, get_settings
+from upgradepilot.db import history as hist
 from upgradepilot.graph.build import build_graph
 from upgradepilot.graph.checkpointer import get_memory_checkpointer, get_postgres_checkpointer
 from upgradepilot.graph.state import FIXTURE_SUPPORTED, AnalysisStatus, make_initial_state
@@ -211,13 +213,30 @@ class _AnalysisStore:
 STORE = _AnalysisStore()
 
 
+@router.get("", response_model=list[dict[str, Any]])
+async def list_analyses(
+    limit: int = Query(default=10, ge=1, le=50),
+    user_id: uuid.UUID = Depends(require_user_id),
+) -> list[dict[str, Any]]:
+    """Return the authenticated user's most recent analyses."""
+    return hist.list_analyses(user_id=user_id, limit=limit)
+
+
 @router.post("", response_model=AnalysisCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analysis(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
+    user_id: uuid.UUID | None = Depends(optional_user_id),
 ) -> AnalysisCreateResponse:
     """Create an analysis and start graph execution."""
     record = await STORE.create(request)
+    if user_id is not None:
+        hist.record_analysis(
+            user_id=user_id,
+            analysis_id=record.analysis_id,
+            repository_url=request.repository_url,
+            ref=request.ref or "main",
+        )
     if request.analysis_mode == AnalysisMode.FIXTURE:
         await _run_analysis(record.analysis_id)
     else:
@@ -336,6 +355,7 @@ async def _run_analysis(analysis_id: str) -> None:
                 else AnalysisStatus.FAILED.value
             )
         await STORE.finish(analysis_id, status_value=status_value)
+        hist.finish_analysis(analysis_id=analysis_id, status=status_value)
         logger.info(
             "Analysis finished through API",
             extra={
@@ -354,6 +374,7 @@ async def _run_analysis(analysis_id: str) -> None:
             status_value=AnalysisStatus.FAILED.value,
             error_message="Analysis failed; see server logs with this analysis ID.",
         )
+        hist.finish_analysis(analysis_id=analysis_id, status=AnalysisStatus.FAILED.value)
 
 
 @asynccontextmanager
