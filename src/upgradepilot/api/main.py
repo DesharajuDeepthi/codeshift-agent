@@ -16,6 +16,7 @@ from upgradepilot.api.middleware import PrometheusMiddleware
 from upgradepilot.auth.router import router as auth_router
 from upgradepilot.config import get_settings
 from upgradepilot.db import history as hist
+from upgradepilot.memory import semantic as sem_mem
 from upgradepilot.observability.logging import configure_logging, get_logger
 from upgradepilot.observability.metrics import REGISTRY
 from upgradepilot.observability.tracing import configure_langsmith
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         hide_outputs=settings.langsmith_hide_outputs,
     )
     hist.ensure_table()
+    sem_mem.ensure_table()
     logger.info("UpgradePilot API started", extra={"event": "startup", "version": __version__})
     yield
     logger.info("UpgradePilot API stopped", extra={"event": "shutdown"})

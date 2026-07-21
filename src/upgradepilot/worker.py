@@ -27,6 +27,7 @@ from upgradepilot.delta.detector import compute_delta
 from upgradepilot.graph.build import build_graph
 from upgradepilot.graph.checkpointer import get_checkpointer
 from upgradepilot.graph.state import make_initial_state
+from upgradepilot.memory.semantic import store_findings_embeddings
 from upgradepilot.memory.store import get_previous_findings
 from upgradepilot.observability.metrics import (
     record_job_completed,
@@ -127,6 +128,27 @@ def process_one(redis: RedisClient, conn: Connection) -> bool:
         }
 
         _persist(conn, job, result, delta_json)
+
+        # Store embeddings for semantic long-term memory (best-effort, non-blocking)
+        interp_map: dict[str, str] = {}
+        ci = (result.get("compatibility_interpretation") or {})
+        for entry in ci.get("interpretations") or []:
+            if isinstance(entry, dict):
+                fid = str(entry.get("finding_id", ""))
+                if fid:
+                    interp_map[fid] = entry.get("impact_summary", "")
+        try:
+            n = store_findings_embeddings(
+                current_findings,
+                analysis_id=str(job.analysis_id),
+                repository_url=job.repository_url,
+                interpretation_map=interp_map,
+            )
+            if n:
+                log.info("stored %d finding embeddings for job %s", n, job.job_id)
+        except Exception as emb_exc:  # noqa: BLE001
+            log.warning("embedding storage failed for job %s: %s", job.job_id, emb_exc)
+
         complete_job(redis, job.job_id)
         record_job_completed(fixed=len(delta.fixed), new=len(delta.new))
         log.info("completed job %s — %s", job.job_id, delta.summary)
