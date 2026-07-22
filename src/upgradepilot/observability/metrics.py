@@ -156,3 +156,71 @@ def record_validation_issues(issues: list[dict[str, object]]) -> None:
     for issue in issues:
         severity = str(issue.get("severity") or "unknown")
         validation_issues_total.labels(severity=severity).inc()
+
+
+# ---------------------------------------------------------------------------
+# V2 Queue metrics
+# ---------------------------------------------------------------------------
+
+queue_jobs_enqueued_total = Counter(
+    "upgradepilot_queue_jobs_enqueued_total",
+    "Jobs added to the Redis queue",
+    ["user_id"],
+    registry=REGISTRY,
+)
+queue_jobs_completed_total = Counter(
+    "upgradepilot_queue_jobs_completed_total",
+    "Jobs completed successfully",
+    registry=REGISTRY,
+)
+queue_jobs_failed_total = Counter(
+    "upgradepilot_queue_jobs_failed_total",
+    "Jobs that exhausted retries and were marked failed",
+    ["error_code"],
+    registry=REGISTRY,
+)
+queue_jobs_retried_total = Counter(
+    "upgradepilot_queue_jobs_retried_total",
+    "Jobs re-queued after a transient failure",
+    registry=REGISTRY,
+)
+queue_rate_limited_total = Counter(
+    "upgradepilot_queue_rate_limited_total",
+    "Enqueue attempts rejected by rate limiter",
+    ["user_id"],
+    registry=REGISTRY,
+)
+queue_delta_findings_fixed_total = Counter(
+    "upgradepilot_queue_delta_findings_fixed_total",
+    "Findings marked fixed across all completed jobs",
+    registry=REGISTRY,
+)
+queue_delta_findings_new_total = Counter(
+    "upgradepilot_queue_delta_findings_new_total",
+    "New (regression) findings detected across all completed jobs",
+    registry=REGISTRY,
+)
+
+
+def record_job_enqueued(*, user_id: str) -> None:
+    queue_jobs_enqueued_total.labels(user_id=user_id).inc()
+
+
+def record_job_completed(*, fixed: int = 0, new: int = 0) -> None:
+    queue_jobs_completed_total.inc()
+    if fixed:
+        queue_delta_findings_fixed_total.inc(fixed)
+    if new:
+        queue_delta_findings_new_total.inc(new)
+
+
+def record_job_failed(*, error_code: str) -> None:
+    queue_jobs_failed_total.labels(error_code=error_code).inc()
+
+
+def record_job_retried() -> None:
+    queue_jobs_retried_total.inc()
+
+
+def record_rate_limited(*, user_id: str) -> None:
+    queue_rate_limited_total.labels(user_id=user_id).inc()

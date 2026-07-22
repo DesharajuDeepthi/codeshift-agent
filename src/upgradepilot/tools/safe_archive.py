@@ -226,9 +226,9 @@ class SafeArchiveDownloader:
         # First pass: validate every member before extracting any
         for member in members:
             if member.issym() or member.islnk():
-                # Symlinks/hardlinks are skipped (not extracted) in the second pass,
-                # so they cannot escape the workspace. Count them but don't reject.
-                continue
+                raise SafetyLimitError(
+                    f"Archive contains symlink or hardlink; rejected: {member.name!r}"
+                )
 
             if member.isdev() or member.isblk() or member.isfifo():
                 raise SafetyLimitError(f"Archive contains special file; rejected: {member.name!r}")

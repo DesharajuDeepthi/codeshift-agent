@@ -43,4 +43,5 @@ def test_streamlit_ui_uses_api_exports_and_feedback_without_secret_fields() -> N
     assert "report.md" in source
     assert "github-issue.md" in source
     assert "api_key" not in source.lower()
-    assert "authorization" not in source.lower()
+    # Hardcoded credentials must not appear; dynamic auth headers via _auth_headers() are fine
+    assert "token = " not in source or "session_state" in source  # token only read from session

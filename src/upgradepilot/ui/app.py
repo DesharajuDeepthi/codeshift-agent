@@ -13,14 +13,128 @@ API_BASE_URL = os.getenv(
     "UPGRADEPILOT_API_URL",
     os.getenv("API_URL", "http://localhost:8000"),
 ).rstrip("/")
+
+# Browser-facing URL — used for links the user's browser must follow directly.
+# Inside Docker the API is reachable as http://api:8000, but browsers can't
+# resolve that hostname; PUBLIC_API_URL points to the host-accessible address.
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://localhost:8000").rstrip("/")
 JSON_REPORT_SUFFIX = "report.json"
 MARKDOWN_REPORT_SUFFIX = "report.md"
 GITHUB_ISSUE_SUFFIX = "github-issue.md"
 
+# ---------------------------------------------------------------------------
+# V2 Auth helpers
+# ---------------------------------------------------------------------------
+
+_AUTH_TOKEN_KEY = "auth_token"  # noqa: S105
+_AUTH_LOGIN_KEY = "auth_login"
+
+
+def _auth_headers() -> dict[str, str]:
+    token = st.session_state.get(_AUTH_TOKEN_KEY)
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _is_authenticated() -> bool:
+    return bool(st.session_state.get(_AUTH_TOKEN_KEY))
+
+
+def _handle_oauth_callback() -> None:
+    """Store JWT from query params if the API redirected back here after OAuth."""
+    params = st.query_params
+    access_token = params.get("access_token")
+    if not access_token:
+        return
+    # Clear all state so no stale analysis results show after fresh login
+    st.session_state.clear()
+    st.session_state[_AUTH_TOKEN_KEY] = access_token
+    st.session_state[_AUTH_LOGIN_KEY] = params.get("login", "user")
+    st.query_params.clear()
+    st.rerun()
+
+
+def _show_auth_sidebar() -> None:
+    """Render login/logout controls in the sidebar."""
+    st.sidebar.divider()
+    if _is_authenticated():
+        login = st.session_state.get(_AUTH_LOGIN_KEY, "user")
+        st.sidebar.caption(f"Signed in as **{login}**")
+        if st.sidebar.button("Sign out"):
+            st.session_state.clear()
+            st.rerun()
+    else:
+        login_url = f"{PUBLIC_API_URL}/auth/login"
+        st.sidebar.markdown(f"[Login with GitHub]({login_url})", unsafe_allow_html=False)
+        st.sidebar.caption("Sign in to track history and delta across runs.")
+
+
+# ---------------------------------------------------------------------------
+# V2 History helpers
+# ---------------------------------------------------------------------------
+
+
+def _delta_badge(delta: dict[str, Any] | None) -> str:
+    """Format a compact delta badge string for the history sidebar."""
+    if not delta:
+        return ""
+    fixed = len(delta.get("fixed") or [])
+    new = len(delta.get("new") or [])
+    still = len(delta.get("still_open") or [])
+    parts = []
+    if fixed:
+        parts.append(f"↓{fixed} fixed")
+    if new:
+        parts.append(f"↑{new} new")
+    if still:
+        parts.append(f"={still} open")
+    return " · ".join(parts) if parts else "no change"
+
+
+def _show_history_sidebar() -> None:
+    """Fetch and render the last 10 analyses for the authenticated user."""
+    if not _is_authenticated():
+        return
+    try:
+        resp = httpx.get(
+            f"{API_BASE_URL}/analyses",
+            headers=_auth_headers(),
+            params={"limit": 10},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        analyses: list[dict[str, Any]] = resp.json()
+    except httpx.HTTPError:
+        return
+
+    st.sidebar.divider()
+    st.sidebar.subheader("Recent analyses")
+    if not analyses:
+        st.sidebar.caption("No analyses yet.")
+        return
+
+    for item in analyses:
+        aid = item.get("analysis_id", "")
+        repo = item.get("repository_url", "")
+        short_repo = repo.split("/")[-1] if "/" in repo else repo
+        item_status = item.get("status", "")
+        delta = item.get("delta")
+        badge = _delta_badge(delta)
+        label = f"{short_repo[:24]} [{item_status}]"
+        if badge:
+            label += f"\n{badge}"
+        if st.sidebar.button(label, key=f"hist_{aid}"):
+            st.session_state["analysis_id"] = aid
+            st.rerun()
+
 
 def _api(method: str, path: str, *, json_payload: object | None = None) -> httpx.Response:
     with httpx.Client(timeout=httpx.Timeout(30.0)) as client:
-        response = client.request(method, f"{API_BASE_URL}{path}", json=json_payload)
+        response = client.request(
+            method,
+            f"{API_BASE_URL}{path}",
+            json=json_payload,
+            headers=_auth_headers(),
+        )
         response.raise_for_status()
         return response
 
@@ -270,6 +384,10 @@ def _download_text(analysis_id: str, suffix: str) -> str:
 
 
 st.set_page_config(page_title="UpgradePilot", layout="wide")
+
+# Handle GitHub OAuth callback before any UI renders
+_handle_oauth_callback()
+
 st.title("UpgradePilot")
 st.caption("Agentic migration intelligence — any language, any framework")
 
@@ -284,6 +402,10 @@ if "available_packs" not in st.session_state:
 _pack_list: list[dict[str, Any]] = st.session_state.get("available_packs", [])
 _AUTO_DETECT_LABEL = "Auto-detect (recommended)"
 _pack_options = [_AUTO_DETECT_LABEL] + [f"{p['display_name']} ({p['pack_id']})" for p in _pack_list]
+
+# V2: auth + history sidebars
+_show_auth_sidebar()
+_show_history_sidebar()
 
 with st.sidebar:
     st.header("Analysis")
@@ -336,6 +458,14 @@ else:
         if current_status == "running":
             _time.sleep(2)
             st.rerun()
+        # V2: show delta badge if this run has a previous comparison
+        analysis_meta = _safe_get(f"/analyses/{analysis_id}")
+        if analysis_meta:
+            delta = analysis_meta.get("delta")
+            if delta:
+                badge = _delta_badge(delta)
+                st.info(f"Delta vs previous run: **{badge}**")
+
         report = _safe_get(f"/analyses/{analysis_id}/report")
         if report:
             facts, evidence, interpretation, recommendations, validation, exports = st.tabs(

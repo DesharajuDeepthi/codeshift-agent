@@ -1,29 +1,34 @@
-"""User models for V2 multi-tenant support."""
+"""Auth models for V2 GitHub OAuth flow."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+
+
+class GitHubUser(BaseModel):
+    github_id: int
+    login: str
+    email: str | None
+    avatar_url: str | None
 
 
 class User(BaseModel):
     user_id: uuid.UUID
-    email: EmailStr
+    github_id: int
+    login: str
+    email: str | None
+    avatar_url: str | None
     created_at: datetime
     is_active: bool = True
 
 
 class TokenPayload(BaseModel):
-    sub: str  # user_id
+    sub: str  # user_id as string
     exp: int
     iat: int
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
 
 
 class TokenResponse(BaseModel):

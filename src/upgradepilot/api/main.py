@@ -15,7 +15,10 @@ from upgradepilot.api.health import router as health_router
 from upgradepilot.api.middleware import PrometheusMiddleware
 from upgradepilot.api.packs import router as packs_router
 from upgradepilot.api.repos import router as repos_router
+from upgradepilot.auth.router import router as auth_router
 from upgradepilot.config import get_settings
+from upgradepilot.db import history as hist
+from upgradepilot.memory import semantic as sem_mem
 from upgradepilot.observability.logging import configure_logging, get_logger
 from upgradepilot.observability.metrics import REGISTRY
 from upgradepilot.observability.tracing import configure_langsmith
@@ -37,6 +40,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         hide_inputs=settings.langsmith_hide_inputs,
         hide_outputs=settings.langsmith_hide_outputs,
     )
+    hist.ensure_table()
+    sem_mem.ensure_table()
     logger.info("UpgradePilot API started", extra={"event": "startup", "version": __version__})
 
     # Wire FindingsStore when a database URL is configured (skipped in fixture/CI mode)
@@ -94,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(packs_router)
     app.include_router(analyses_router)
     app.include_router(repos_router)
+    app.include_router(auth_router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> PlainTextResponse:

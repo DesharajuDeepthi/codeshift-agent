@@ -17,6 +17,7 @@ from upgradepilot.llm.client import (
     StaticLLMClient,
     StructuredLLMRequest,
 )
+from upgradepilot.memory.semantic import retrieve_similar_findings
 from upgradepilot.migration.models import LoadedMigrationPack, PromptTemplate
 from upgradepilot.models.agent_outputs import (
     AgentOutputStatus,
@@ -69,12 +70,15 @@ class CompatibilityInterpretationAgent:
         )
 
         tool_outputs = _run_allowed_lookup_tools(state, findings, docs)
+        analysis_id = str(state.get("analysis_id", ""))
+        similar_findings_map = _fetch_similar_findings(findings, exclude_analysis_id=analysis_id)
         prompt_text = _render_prompt(
             prompt,
             findings=findings,
             docs=docs,
             risk=state.get("risk_assessment") or {},
             tool_outputs=tool_outputs,
+            similar_findings_map=similar_findings_map,
         )
         input_tokens = _estimate_tokens(prompt_text)
         try:
@@ -182,6 +186,28 @@ def _run_allowed_lookup_tools(
     return tools
 
 
+def _fetch_similar_findings(
+    findings: list[Mapping[str, Any]],
+    *,
+    exclude_analysis_id: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Return {finding_id: [similar_past_findings]} for each finding (best-effort)."""
+    result: dict[str, list[dict[str, Any]]] = {}
+    for f in findings:
+        fid = str(f.get("finding_id", ""))
+        if not fid:
+            continue
+        try:
+            similar = retrieve_similar_findings(
+                dict(f), exclude_analysis_id=exclude_analysis_id
+            )
+        except Exception:  # noqa: BLE001
+            similar = []
+        if similar:
+            result[fid] = similar
+    return result
+
+
 def _render_prompt(
     prompt: PromptTemplate,
     *,
@@ -189,6 +215,7 @@ def _render_prompt(
     docs: list[Mapping[str, Any]],
     risk: Mapping[str, Any],
     tool_outputs: Mapping[str, Any],
+    similar_findings_map: dict[str, list[dict[str, Any]]] | None = None,
 ) -> str:
     inputs = {
         "findings": findings,
@@ -205,6 +232,7 @@ def _render_prompt(
         ],
         "deterministic_risk_assessment": risk,
         "allowed_tools_used": tool_outputs,
+        "similar_past_findings": similar_findings_map or {},
         "constraints": {
             "max_llm_calls": _MAX_LLM_CALLS,
             "do_not_create_finding_ids": True,
