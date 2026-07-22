@@ -108,6 +108,7 @@ FIXTURE_PROFILE_FAILURE = "profile_failure"
 FIXTURE_REPAIR_SUCCESS = "repair_success"
 FIXTURE_REPAIR_FAIL = "repair_fail"
 FIXTURE_VALIDATION_STRUCTURAL = "validation_structural"
+FIXTURE_AUTO_DETECT = "auto_detect"
 
 
 class UpgradePilotState(TypedDict):

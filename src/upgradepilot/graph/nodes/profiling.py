@@ -14,6 +14,7 @@ from upgradepilot.graph.nodes._helpers import (
     node_record,
 )
 from upgradepilot.graph.state import (
+    FIXTURE_AUTO_DETECT,
     FIXTURE_NOT_APPLICABLE,
     FIXTURE_UNSUPPORTED,
     AnalysisStatus,
@@ -192,6 +193,26 @@ async def select_migration_pack(state: UpgradePilotState) -> dict[str, Any]:
 
     if is_fixture(state):
         scenario = state.get("fixture_scenario", "")
+        if scenario == FIXTURE_AUTO_DETECT:
+            return {
+                "applicability_status": ApplicabilityStatus.SUPPORTED,
+                "pack_id": _PACK_ID,
+                "pack_candidates": [
+                    {
+                        "pack_id": _PACK_ID,
+                        "display_name": "Pydantic v1 → v2",
+                        "status": "SUPPORTED",
+                        "confidence": 0.90,
+                    },
+                    {
+                        "pack_id": "django-v3-to-v4",
+                        "display_name": "Django v3 → v4",
+                        "status": "NOT_APPLICABLE",
+                        "confidence": 0.05,
+                    },
+                ],
+                "node_executions": [node_record(_NODE_PACK, started)],
+            }
         if scenario == FIXTURE_NOT_APPLICABLE:
             return {
                 "applicability_status": ApplicabilityStatus.NOT_APPLICABLE,

@@ -20,9 +20,11 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from evals.datasets.detection_cases import DETECTION_CASES, DetectionCase
 from upgradepilot.analyzers.ast_scanner import scan_file
+from upgradepilot.analyzers.base import ANALYZER_KIND_REGEX
 from upgradepilot.migration.loader import load_pack
 from upgradepilot.models.finding import MigrationFinding
 
@@ -62,15 +64,30 @@ class DetectionSuiteResult:
         _print_report(self)
 
 
-def _evaluate_case(case: DetectionCase, pack) -> tuple[CaseResult, dict[str, int]]:
-    """
-    Returns (CaseResult, per-rule TP/FP/FN counts as side effect of counters).
+def _scan_fixture_with_regex(fixture_path: Path, pack: Any) -> list[MigrationFinding]:
+    """Scan a single fixture file using the RegexAnalyzer via a temp workspace."""
+    import shutil
+    import tempfile
 
-    Precision / recall are computed externally across all cases.
+    from upgradepilot.analyzers.regex_analyzer import RegexAnalyzer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        workspace = Path(tmp)
+        shutil.copy(fixture_path, workspace / fixture_path.name)
+        result = RegexAnalyzer().scan(workspace, pack)
+    return result.findings
+
+
+def _evaluate_case(case: DetectionCase, pack: Any) -> CaseResult:
     """
-    src = case.fixture_path.read_text(encoding="utf-8")
-    rel = case.fixture_path.name
-    findings, _ = scan_file(src, rel, pack)
+    Returns CaseResult. Precision / recall are computed externally across all cases.
+    """
+    if getattr(pack.metadata, "analyzer_kind", None) == ANALYZER_KIND_REGEX:
+        findings = _scan_fixture_with_regex(case.fixture_path, pack)
+    else:
+        src = case.fixture_path.read_text(encoding="utf-8")
+        rel = case.fixture_path.name
+        findings, _ = scan_file(src, rel, pack)
     found_rule_ids = {f.rule_id for f in findings}
 
     # Recall: expected rules that fired
@@ -175,10 +192,16 @@ def _print_report(result: DetectionSuiteResult) -> None:
     print(f"{'=' * 78}\n")
 
 
-def run_detection_suite(backend: str = "local") -> DetectionSuiteResult:
-    pack = load_pack(PACK_DIR)
+def run_detection_suite(
+    pack_dir: Path | None = None,
+    cases: list[DetectionCase] | None = None,
+    backend: str = "local",
+) -> DetectionSuiteResult:
+    _pack_dir = pack_dir if pack_dir is not None else PACK_DIR
+    _cases = cases if cases is not None else DETECTION_CASES
+    pack = load_pack(_pack_dir)
     t0 = time.monotonic()
-    case_results = [_evaluate_case(c, pack) for c in DETECTION_CASES]
+    case_results = [_evaluate_case(c, pack) for c in _cases]
     elapsed = time.monotonic() - t0
     precision, recall, file_acc, line_acc = _compute_metrics(case_results)
 
@@ -191,10 +214,11 @@ def run_detection_suite(backend: str = "local") -> DetectionSuiteResult:
         elapsed_s=elapsed,
     )
 
-    # Write JSON result
+    # Write JSON result (one file per pack)
     RESULTS_DIR.mkdir(exist_ok=True)
+    pack_slug = pack.metadata.pack_id.replace("-", "_")
     out = {
-        "suite": "detection",
+        "suite": f"detection/{pack.metadata.pack_id}",
         "backend": backend,
         "micro_precision": precision,
         "micro_recall": recall,
@@ -213,6 +237,8 @@ def run_detection_suite(backend: str = "local") -> DetectionSuiteResult:
             for cr in case_results
         ],
     }
-    (RESULTS_DIR / "latest.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
+    (RESULTS_DIR / f"latest_{pack_slug}.json").write_text(
+        json.dumps(out, indent=2), encoding="utf-8"
+    )
 
     return result

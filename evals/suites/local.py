@@ -9,12 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from evals.common import CaseResult, EvalRunResult, experiment_name, write_outputs
+from evals.datasets.detection_cases import DJANGO_DETECTION_CASES
 from evals.datasets.registry import DATASET_VERSION, ROOT, all_examples
 from evals.suites.detection import run_detection_suite
 from upgradepilot.agents.evidence_critic import EvidenceCriticAgent
 from upgradepilot.analyzers.repository_profiler import profile_repository
 from upgradepilot.graph.build import build_graph
-from upgradepilot.graph.state import ReportStatus, make_initial_state
+from upgradepilot.graph.state import FIXTURE_AUTO_DETECT, ReportStatus, make_initial_state
+from upgradepilot.migration.applicability import ApplicabilityEngine
 from upgradepilot.migration.loader import load_all_packs
 from upgradepilot.models.agent_outputs import MigrationPlanDraft
 from upgradepilot.models.finding import MigrationFinding
@@ -22,6 +24,8 @@ from upgradepilot.models.profile import PydanticSignal, RepositoryProfile
 from upgradepilot.validators.evidence import ValidationContext, validate_plan_evidence
 
 PACK_ID = "pydantic-v1-to-v2"
+_ROOT = ROOT
+_DJANGO_PACK_DIR = _ROOT / "migration_packs" / "django_v3_to_v4"
 DATASET_VERSIONS = {
     "upgradepilot-v1-applicability": DATASET_VERSION,
     "upgradepilot-v1-detection": DATASET_VERSION,
@@ -38,6 +42,11 @@ _REQUEST = {
     "request_id": "eval-local",
     "github_owner": "test-owner",
     "github_repo": "test-repo",
+}
+
+_AUTO_DETECT_REQUEST = {
+    **_REQUEST,
+    "migration_pack": None,
 }
 
 _FINDING = {
@@ -114,35 +123,41 @@ def _selected_groups(suite: str) -> set[str]:
 
 
 def _evaluate_detection() -> list[CaseResult]:
-    result = run_detection_suite(backend="local")
+    suite_results = [
+        run_detection_suite(backend="local"),
+        run_detection_suite(
+            pack_dir=_DJANGO_PACK_DIR, cases=DJANGO_DETECTION_CASES, backend="local"
+        ),
+    ]
     cases: list[CaseResult] = []
-    for case in result.case_results:
-        hard_failures: list[str] = []
-        if not case.precision_ok:
-            hard_failures.append("finding_precision")
-        if not case.recall_ok:
-            hard_failures.append("finding_recall")
-        if not case.line_ok:
-            hard_failures.append("exact_line_validity")
-        cases.append(
-            CaseResult(
-                name=case.case.name,
-                group="detection",
-                passed=not hard_failures,
-                hard_failures=hard_failures,
-                metrics={
-                    "precision_ok": case.precision_ok,
-                    "recall_ok": case.recall_ok,
-                    "exact_line_validity": case.line_ok,
-                    "finding_count": len(case.findings),
-                    "exact_file_validity": all(
-                        f.file == case.case.fixture_path.name for f in case.findings
-                    ),
-                    "rule_id_validity": True,
-                },
-                tags=["detection"],
+    for result in suite_results:
+        for case in result.case_results:
+            hard_failures: list[str] = []
+            if not case.precision_ok:
+                hard_failures.append("finding_precision")
+            if not case.recall_ok:
+                hard_failures.append("finding_recall")
+            if not case.line_ok:
+                hard_failures.append("exact_line_validity")
+            cases.append(
+                CaseResult(
+                    name=case.case.name,
+                    group="detection",
+                    passed=not hard_failures,
+                    hard_failures=hard_failures,
+                    metrics={
+                        "precision_ok": case.precision_ok,
+                        "recall_ok": case.recall_ok,
+                        "exact_line_validity": case.line_ok,
+                        "finding_count": len(case.findings),
+                        "exact_file_validity": all(
+                            f.file == case.case.fixture_path.name for f in case.findings
+                        ),
+                        "rule_id_validity": True,
+                    },
+                    tags=["detection"],
+                )
             )
-        )
     return cases
 
 
@@ -152,8 +167,33 @@ def _evaluate_applicability() -> list[CaseResult]:
     for example in examples:
         fixture = _project_path(str(example.inputs["fixture_path"]))
         profile = profile_repository(fixture)
-        status = _applicability_status(profile)
         expected = example.expected
+
+        if "pack_id" in expected:
+            # Multi-pack ApplicabilityEngine evaluation (e.g. Django)
+            registry = load_all_packs()
+            pack = registry.get(str(expected["pack_id"]))
+            engine = ApplicabilityEngine(pack)
+            assessment = engine.assess(profile, fixture)
+            status_ok = assessment.status.value == expected.get("status", "")
+            hard_failures = _failed([("applicability_accuracy", status_ok)])
+            results.append(
+                CaseResult(
+                    name=example.name,
+                    group=example.group,
+                    passed=not hard_failures,
+                    hard_failures=hard_failures,
+                    metrics={
+                        "applicability_accuracy": status_ok,
+                        "applicability_status": assessment.status.value,
+                    },
+                    tags=example.tags,
+                )
+            )
+            continue
+
+        # Legacy pydantic-signal evaluation
+        status = _applicability_status(profile)
         signal_ok = profile.applicability.pydantic_signal == expected["pydantic_signal"]
         status_ok = status == expected["applicability_status"]
         dep_ok = len(profile.pydantic_dependencies) == expected.get(
@@ -277,7 +317,8 @@ def _evaluate_chaos() -> list[CaseResult]:
     results: list[CaseResult] = []
     for example in examples:
         scenario = str(example.inputs["fixture_scenario"])
-        state = make_initial_state(str(uuid.uuid4()), _REQUEST, scenario)
+        request = _AUTO_DETECT_REQUEST if scenario == FIXTURE_AUTO_DETECT else _REQUEST
+        state = make_initial_state(str(uuid.uuid4()), request, scenario)
         final_state = asyncio.run(
             compiled.ainvoke(state, config={"configurable": {"thread_id": str(uuid.uuid4())}})
         )
@@ -294,6 +335,16 @@ def _evaluate_chaos() -> list[CaseResult]:
         early_termination = (
             "compatibility_interpretation" not in nodes if "unsupported" in scenario else True
         )
+        # Auto-detect specific: verify pack selection populated correctly
+        pack_candidates = final_state.get("pack_candidates") or []
+        expected_candidates_count = example.expected.get(
+            "pack_candidates_count", len(pack_candidates)
+        )
+        auto_detect_ok = scenario != FIXTURE_AUTO_DETECT or (
+            final_state.get("pack_id") == example.expected.get("pack_id")
+            and len(pack_candidates) == expected_candidates_count
+            and bool(pack_candidates and pack_candidates[0].get("status") == "SUPPORTED")
+        )
         hard_failures = _failed(
             [
                 ("graph_termination", report_status == expected_status),
@@ -307,6 +358,7 @@ def _evaluate_chaos() -> list[CaseResult]:
                     "graceful_failure",
                     final_state.get("status") in {"completed", "partial", "terminal"},
                 ),
+                ("auto_detect_selection", auto_detect_ok),
             ]
         )
         results.append(
@@ -324,6 +376,7 @@ def _evaluate_chaos() -> list[CaseResult]:
                     "validation_before_report": validation_before_report,
                     "early_termination": early_termination,
                     "node_count": len(nodes),
+                    "auto_detect_selection": auto_detect_ok,
                 },
                 tags=example.tags,
                 details={"nodes": nodes, "report_status": report_status},
@@ -564,4 +617,6 @@ def _correct_branch(scenario: str, nodes: list[str], report_status: str) -> bool
         )
     if scenario == "acquisition_failure":
         return "assemble_terminal_report" in nodes
+    if scenario == FIXTURE_AUTO_DETECT:
+        return "select_migration_pack" in nodes and report_status == ReportStatus.VALIDATED
     return True
