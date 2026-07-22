@@ -156,3 +156,37 @@ def record_validation_issues(issues: list[dict[str, object]]) -> None:
     for issue in issues:
         severity = str(issue.get("severity") or "unknown")
         validation_issues_total.labels(severity=severity).inc()
+
+
+# Findings / cross-analysis memory
+findings_persisted_total = Counter(
+    "upgradepilot_findings_persisted_total",
+    "Total findings persisted by pack",
+    ["pack_id"],
+    registry=REGISTRY,
+)
+delta_new_findings_total = Counter(
+    "upgradepilot_delta_new_findings_total",
+    "New findings introduced vs previous analysis by pack",
+    ["pack_id"],
+    registry=REGISTRY,
+)
+delta_resolved_findings_total = Counter(
+    "upgradepilot_delta_resolved_findings_total",
+    "Findings resolved vs previous analysis by pack",
+    ["pack_id"],
+    registry=REGISTRY,
+)
+
+
+def record_findings_persisted(*, pack_id: str, count: int) -> None:
+    """Emit findings persistence counter for a pack."""
+    findings_persisted_total.labels(pack_id=pack_id).inc(count)
+
+
+def record_delta(*, pack_id: str, new_count: int, resolved_count: int) -> None:
+    """Emit delta counters after cross-analysis comparison."""
+    if new_count:
+        delta_new_findings_total.labels(pack_id=pack_id).inc(new_count)
+    if resolved_count:
+        delta_resolved_findings_total.labels(pack_id=pack_id).inc(resolved_count)

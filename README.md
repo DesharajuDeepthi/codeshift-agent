@@ -1,8 +1,8 @@
 # CodeShift Agent — UpgradePilot V1
 
-Agentic code migration intelligence built with **LangGraph StateGraph**, deterministic AST scanning, **LangSmith evaluation harness**, and full **Prometheus + Grafana observability**.
+Agentic code migration intelligence built with **LangGraph StateGraph**, deterministic AST/regex scanning, **LangSmith evaluation harness**, and full **Prometheus + Grafana observability**.
 
-V1 target: Pydantic v1 → v2. Architecture is migration-pack extensible to any language or framework upgrade.
+V1 ships two migration packs — **Pydantic v1→v2** (AST) and **Django v3→v4** (regex) — with automatic pack detection when no pack is specified. The architecture is fully migration-pack extensible to any language or framework upgrade.
 
 ## Screenshots
 
@@ -14,33 +14,37 @@ V1 target: Pydantic v1 → v2. Architecture is migration-pack extensible to any 
 
 ---
 
-UpgradePilot is an agentic, evidence-validated migration intelligence system for
-public Python repositories moving from Pydantic v1 to Pydantic v2.
+UpgradePilot is an agentic, evidence-validated migration intelligence system for public Python repositories. It supports multiple migration packs and automatically selects the best-matching pack when one is not specified.
 
-It does not edit code, open pull requests, run repository tests, or claim a migration
-will succeed. V1 produces read-only findings, risk scoring, official-documentation
-evidence, and a reviewed migration plan that maintainers can use as a starting point.
+It does not edit code, open pull requests, run repository tests, or claim a migration will succeed. V1 produces read-only findings, risk scoring, official-documentation evidence, and a reviewed migration plan that maintainers can use as a starting point.
 
 ## Why It Exists
 
-Pydantic migrations are easy to underestimate: a repository can mix validators,
-serialization methods, config classes, compatibility shims, dependency constraints,
-and untested runtime behavior. UpgradePilot turns that repo-specific surface area into
-an auditable report with exact files, exact lines, bounded snippets, official evidence,
-and deterministic validation before anything is shown as a recommendation.
+Framework migrations are easy to underestimate: a repository can mix deprecated patterns, renamed APIs, removed imports, changed configuration, and untested runtime behavior. UpgradePilot turns that repo-specific surface area into an auditable report with exact files, exact lines, bounded snippets, official evidence, and deterministic validation — and tracks progress across runs with content-addressed delta detection.
 
 ## What V1 Does
 
 - Accepts a public GitHub repository URL and requested ref.
 - Resolves the repository to a commit SHA.
-- Profiles Python files, manifests, tests, CI, and Pydantic dependency signals.
-- Scans source with deterministic AST rules from the Pydantic v1-to-v2 migration pack.
-- Retrieves allowlisted official Pydantic documentation evidence with cached fallback.
+- Profiles Python files, manifests, tests, CI, and dependency signals.
+- Auto-detects the best migration pack from installed packs, or uses the one you specify.
+- Scans source with deterministic AST rules (Pydantic pack) or regex rules (Django pack).
+- Retrieves allowlisted official documentation evidence with cached fallback.
 - Calculates deterministic risk before planning.
 - Uses bounded LLM agents for interpretation, planning, and one repair path.
 - Validates every PlanClaim against known files, lines, findings, docs, packages, and rules.
+- Persists findings relationally and computes a run-to-run delta (new / resolved / unchanged).
 - Exports JSON, Markdown, and GitHub issue-body drafts.
 - Emits LangSmith traces, Prometheus metrics, and degraded-observability warnings.
+
+## Migration Packs
+
+| Pack ID | Framework | Analyzer | Source → Target |
+|---|---|---|---|
+| `pydantic-v1-to-v2` | Pydantic | AST | v1 → v2 |
+| `django-v3-to-v4` | Django | Regex | v3 → v4 |
+
+Pass `"migration_pack": null` (or omit the field) for automatic selection. The `select_migration_pack` node scores all installed packs against the repository profile and picks the highest-confidence match.
 
 ## Architecture
 
@@ -49,16 +53,43 @@ flowchart LR
     U["Streamlit UI"] --> A["FastAPI API"]
     A --> G["LangGraph StateGraph"]
     G --> GH["GitHub public read-only API"]
-    G --> P["Pydantic migration pack"]
+    G --> PACKS["Migration pack registry\n(pydantic-v1-to-v2 · django-v3-to-v4)"]
     G --> D["Trusted docs cache/fetcher"]
     G --> L["Provider-neutral LLMClient"]
     G --> V["Deterministic validators"]
     G --> R["Report/export renderer"]
     G --> LS["LangSmith traces/evals"]
     G --> M["Prometheus metrics"]
-    A --> PG["PostgreSQL readiness/checkpoints"]
+    A --> PG["PostgreSQL\ncheckpoints + analyses + findings"]
+    A --> FS["FindingsStore\ncross-analysis delta"]
     A --> RD["Redis optional cache"]
     M --> GF["Grafana dashboard"]
+```
+
+Graph node flow:
+
+```mermaid
+flowchart TD
+    N1["validate_request"] --> N2["acquire_repository"]
+    N2 --> N3["profile_repository"]
+    N3 --> N4["select_migration_pack\n(auto-detect or use specified)"]
+    N4 --> P1["parse_dependencies"]
+    N4 --> P2["scan_compatibility\nAST analyzer · Regex analyzer"]
+    N4 --> P3["analyze_tests_and_ci"]
+    P1 --> AGG["aggregate_analysis"]
+    P2 --> AGG
+    P3 --> AGG
+    AGG --> DOC["documentation_research agent"]
+    DOC --> RISK["calculate_risk"]
+    RISK --> INT["compatibility_interpretation agent"]
+    INT --> PLAN["migration_planning agent"]
+    PLAN --> VAL["deterministic_evidence_validator"]
+    VAL -->|"pass"| REPORT["assemble_validated_report"]
+    VAL -->|"repairable first failure"| CRITIC["evidence_critic agent"]
+    CRITIC --> REPAIR["repair_plan"]
+    REPAIR --> VAL
+    VAL -->|"structural or second failure"| PARTIAL["assemble_partial_report"]
+    REPORT --> PERSIST["FindingsStore\npersist + delta"]
 ```
 
 More detail: [docs/architecture.md](docs/architecture.md).
@@ -112,17 +143,18 @@ uv run python -m evals.run --suite smoke --backend local
 1. Start the stack with `docker compose up --build`.
 2. Open http://localhost:8501.
 3. Enter a public repository URL and ref.
-4. Use `fixture` mode for a deterministic no-network demo, or `standard` mode for live
-   public GitHub analysis.
-5. Review the Facts, Evidence, Interpretations, Recommendations, Validation, and Exports tabs.
-6. Download JSON, Markdown, or GitHub issue-body drafts.
-7. Submit useful/not-useful feedback. If LangSmith is configured, feedback attaches to the root run.
+4. Select a migration pack from the dropdown, or leave it on **Auto-detect (recommended)**.
+5. Use `fixture` mode for a deterministic no-network demo, or `standard` mode for live public GitHub analysis.
+6. Review the Facts, Evidence, Interpretations, Recommendations, Validation, and Exports tabs.
+7. Download JSON, Markdown, or GitHub issue-body drafts.
+8. Submit useful/not-useful feedback. If LangSmith is configured, feedback attaches to the root run.
+9. Re-run the same repository after making changes — the Facts tab shows delta (new/resolved/unchanged findings).
 
 Pinned public examples are documented in [docs/public_examples.md](docs/public_examples.md).
 
 ## API
 
-Important endpoints:
+Core analysis endpoints:
 
 - `POST /analyses`
 - `GET /analyses/{analysis_id}`
@@ -133,10 +165,35 @@ Important endpoints:
 - `GET /analyses/{analysis_id}/github-issue.md`
 - `POST /analyses/{analysis_id}/feedback`
 
+Cross-analysis memory endpoints (require PostgreSQL with findings store):
+
+- `GET /analyses/{analysis_id}/delta` — new / resolved / unchanged vs previous run
+- `GET /packs/{pack_id}/stats` — fleet-wide rule frequency across all repos
+- `GET /repos/{owner}/{repo}/history` — chronological analysis history for a repository
+
+Pack discovery:
+
+- `GET /packs` — list all installed migration packs with metadata
+
+## Cross-Analysis Memory
+
+After each validated analysis, UpgradePilot persists individual findings into a relational `findings` table keyed by a content hash (`SHA256(pack_id|rule_id|file|line_start|symbol)`). On the next run for the same repository, it computes a delta:
+
+```
+Run 1 (commit a1b2c3):  7 findings
+Run 2 (commit d4e5f6):  5 findings
+
+Delta:
+  new:      0   (no new regressions)
+  resolved: 2   (PYD001 app/models.py:18, PYD011 app/schemas.py:89)
+  unchanged: 5
+```
+
+This turns UpgradePilot from a one-shot scanner into a **continuous migration tracker** — teams can commit fixes incrementally and see exactly what changed each sprint.
+
 ## Evaluation Results
 
-Release evaluation results are recorded in [EVAL_RESULTS.md](EVAL_RESULTS.md). The local
-evaluation harness writes machine-readable outputs under `eval_results/` during a run.
+Release evaluation results are recorded in [EVAL_RESULTS.md](EVAL_RESULTS.md). The smoke suite runs 51 cases covering Pydantic detection, Django detection, applicability, planning, and chaos scenarios. The local evaluation harness writes machine-readable outputs under `eval_results/` during a run.
 
 Commands:
 
@@ -148,10 +205,7 @@ uv run python -m evals.compare --baseline <name> --candidate <name>
 
 ## Security Posture
 
-The repository under analysis is treated as attacker-controlled input. UpgradePilot does
-not execute repository code. It rejects unsafe archives, blocks private-network SSRF
-targets, bounds source snippets, masks secrets before logging/tracing, uses allowlisted
-documentation sources, and validates generated claims deterministically.
+The repository under analysis is treated as attacker-controlled input. UpgradePilot does not execute repository code. It rejects unsafe archives, blocks private-network SSRF targets, bounds source snippets, masks secrets before logging/tracing, uses allowlisted documentation sources, and validates generated claims deterministically.
 
 Security notes:
 
@@ -168,93 +222,12 @@ ADRs are in [docs/adr/](docs/adr/):
 - trusted official documentation only
 - degraded observability without analysis failure
 - read-only V1 scope
+- migration-pack extensibility with auto-detect
 
 ## Known Limitations
 
-See [docs/known_limitations.md](docs/known_limitations.md). In short: V1 supports public
-repositories only, only the Pydantic v1-to-v2 pack, read-only recommendations, in-process
-API analysis storage, and fixture-backed local public migration examples.
+See [docs/known_limitations.md](docs/known_limitations.md). In short: V1 supports public repositories only, read-only recommendations, in-process API analysis status index (lost on restart), and fixture-backed local public migration examples. Cross-analysis memory requires PostgreSQL — it is silently skipped in fixture mode.
 
 ## Production Hardening Roadmap
 
-See [docs/production_hardening_roadmap.md](docs/production_hardening_roadmap.md). Items
-include durable analysis storage, stronger auth/rate limiting, managed secrets, external
-container scanners, private repository support, and broader migration packs.
-
----
-
-## V2 Architecture — Multi-User, Memory & Delta Detection
-
-V1 is single-user and stateless across runs. V2 extends the existing Postgres + Redis + LangGraph stack to support concurrent users and cross-run memory without a rewrite.
-
-### Multi-User
-
-```mermaid
-flowchart LR
-    U1["User A"] & U2["User B"] & U3["User C"] --> API["FastAPI\n(JWT auth middleware)"]
-    API --> Q["Redis job queue\n(per-user isolation)"]
-    Q --> W1["Worker 1\nLangGraph"] & W2["Worker 2\nLangGraph"]
-    W1 & W2 --> PG["Postgres\nanalyses + users"]
-    W1 & W2 --> LS["LangSmith traces"]
-```
-
-**What changes:**
-- `users` table in Postgres (id, email, created_at) — auth via JWT / OAuth2
-- `analyses` table gets a `user_id` foreign key — each user sees only their own runs
-- Redis job queue scopes worker slots per user to prevent one user starving others
-- FastAPI middleware validates JWT on every request — zero changes to the LangGraph graph itself
-
-### Cross-Run Memory via LangGraph Checkpointer
-
-The checkpointer is already wired in V1. V2 activates it with a stable `thread_id`:
-
-```python
-thread_id = sha256(f"{user_id}:{repo_url}")
-```
-
-Same user + same repo → LangGraph resumes from the previous checkpoint. The graph can read
-its own prior output (findings list, commit SHA, risk score) before running the new analysis.
-
-### Delta Detection
-
-When a user re-analyzes the same repository, the system compares the new findings against
-the stored checkpoint from the previous run and produces a delta report:
-
-```
-Run 1  (2026-07-18, commit 029eb77):  7 findings
-  PYD001  app/models.py:18      HIGH
-  PYD003  app/schemas.py:42     HIGH
-  PYD005  app/models.py:55      LOW
-  PYD008  app/config.py:12      MEDIUM
-  PYD009  app/validators.py:7   HIGH
-  PYD009  app/validators.py:31  HIGH
-  PYD011  app/schemas.py:89     MEDIUM
-
-Run 2  (2026-07-25, commit a3f9c12):  5 findings
-
-Delta:
-  ✅ FIXED       PYD001  app/models.py:18       (.dict() replaced with .model_dump())
-  ✅ FIXED       PYD011  app/schemas.py:89      (Field alias removed)
-  📌 STILL OPEN  5 findings remain
-  ⚠️  NEW         (none introduced)
-```
-
-**Why this matters:** most static analysis tools are stateless scanners — run once, get a
-report. Delta detection turns CodeShift Agent into a **continuous migration tracker**: teams
-can commit fixes incrementally and see exactly what progress was made each sprint, without
-manually diffing two JSON reports.
-
-**Implementation:** pure set difference on `(rule_id, file_path, start_line)` tuples between
-the current findings and the checkpointed findings. No LLM involved — deterministic, fast,
-auditable.
-
-### V2 at a Glance
-
-| Capability | V1 | V2 |
-|---|---|---|
-| Users | Anonymous, single | JWT auth, multi-tenant |
-| Analysis history | Lost on refresh | Persistent per user in Postgres |
-| Concurrent analyses | Single-process | Redis queue + N workers |
-| Cross-run memory | None | LangGraph checkpointer (thread_id) |
-| Delta detection | None | Set diff of findings across runs |
-| Migration packs | Pydantic v1→v2 | Extensible: Django, SQLAlchemy, … |
+See [docs/production_hardening_roadmap.md](docs/production_hardening_roadmap.md). Items include durable analysis status storage, stronger auth/rate limiting, managed secrets, external container scanners, private repository support, and additional migration packs.

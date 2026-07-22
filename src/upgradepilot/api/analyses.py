@@ -23,6 +23,7 @@ from upgradepilot.graph.state import FIXTURE_SUPPORTED, AnalysisStatus, make_ini
 from upgradepilot.models.finding import MigrationFinding
 from upgradepilot.models.request import AnalysisRequest
 from upgradepilot.observability.logging import get_logger
+from upgradepilot.observability.metrics import record_delta, record_findings_persisted
 from upgradepilot.observability.tracing import UserFeedback, attach_user_feedback
 from upgradepilot.reports.render import (
     render_github_issue_body,
@@ -257,9 +258,15 @@ async def _persist_findings(
             commit_sha=commit_sha,
             findings=findings,
         )
+        record_findings_persisted(pack_id=pack_id or "unknown", count=len(findings))
 
         if owner and repo:
             delta = await findings_store.delta_vs_previous(owner, repo, analysis_id)
+            record_delta(
+                pack_id=pack_id or "unknown",
+                new_count=delta.new_count,
+                resolved_count=delta.resolved_count,
+            )
             await STORE.update(analysis_id, {"delta": delta.model_dump(mode="json")})
     except Exception:
         logger.warning(
