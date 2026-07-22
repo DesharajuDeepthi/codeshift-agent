@@ -184,47 +184,62 @@ def _post_feedback(analysis_id: str, useful: bool, comment: str) -> None:
 def _show_facts(report: dict[str, Any]) -> None:
     profile = _as_dict(report.get("profile"))
     observability = _as_dict(report.get("observability"))
-    cols = st.columns(4)
-    cols[0].metric("Status", str(report.get("status") or "unknown"))
-    cols[1].metric("Applicability", str(report.get("applicability_status") or "unknown"))
-    cols[2].metric("Migration Pack", str(report.get("migration_pack_version") or "unknown"))
-    cols[3].metric("Trace", str(observability.get("status") or "disabled"))
-    st.text_input("Resolved commit SHA", value=str(report.get("commit_sha") or ""), disabled=True)
-    with st.expander("Repository Profile", expanded=True):
-        st.json(
-            {
-                "python_files": profile.get("python_file_count")
-                or len(_as_list(profile.get("python_files"))),
-                "manifests": len(_as_list(profile.get("manifest_files"))),
-                "tests": len(_as_list(_as_dict(profile.get("test_profile")).get("test_files"))),
-                "profiler_version": profile.get("profiler_version"),
-            }
+
+    # Top-level status cards
+    applicability = str(report.get("applicability_status") or "unknown")
+    pack = str(report.get("migration_pack") or report.get("migration_pack_version") or "unknown")
+    cols = st.columns(3)
+    cols[0].metric("Applicability", applicability)
+    cols[1].metric("Migration Pack", pack)
+    cols[2].metric("Observability", str(observability.get("status") or "disabled"))
+
+    sha = str(report.get("commit_sha") or "")
+    if sha:
+        st.caption(f"Commit: `{sha}`")
+
+    # Repository profile as plain metrics, not raw JSON
+    python_files = profile.get("python_file_count") or len(_as_list(profile.get("python_files")))
+    manifest_files = len(_as_list(profile.get("manifest_files")))
+    test_files = len(_as_list(_as_dict(profile.get("test_profile")).get("test_files")))
+    deps = _as_list(report.get("dependencies"))
+
+    st.markdown("#### Repository Profile")
+    pc1, pc2, pc3 = st.columns(3)
+    pc1.metric("Python files", python_files)
+    pc2.metric("Manifest files", manifest_files)
+    pc3.metric("Test files", test_files)
+    if deps:
+        st.markdown(
+            "**Detected dependencies:** " + ", ".join(f"`{d}`" if isinstance(d, str) else f"`{d.get('name', d)}`" for d in deps)
         )
 
 
 def _show_findings(report: dict[str, Any]) -> None:
     findings = _as_list(report.get("findings"))
-    st.subheader("Findings")
+    count = len(findings)
+    st.markdown(f"#### Findings ({count})")
     if not findings:
-        st.info("No deterministic findings were produced.")
+        st.info("No issues found — this repository looks compatible with the target version.")
         return
-    rows = []
+
+    severity_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
     for finding in findings:
         if not isinstance(finding, dict):
             continue
         location = _as_dict(finding.get("location"))
-        rows.append(
-            {
-                "finding_id": finding.get("finding_id"),
-                "rule_id": finding.get("rule_id"),
-                "severity": finding.get("severity"),
-                "file": location.get("file_path") or finding.get("file_path"),
-                "line": location.get("start_line") or finding.get("line_number"),
-            }
-        )
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    with st.expander("Evidence Details"):
-        st.json(findings)
+        rule = finding.get("rule_id") or "?"
+        severity = str(finding.get("severity") or "medium").lower()
+        icon = severity_icon.get(severity, "⚪")
+        file_path = location.get("file_path") or finding.get("file") or finding.get("file_path") or "unknown file"
+        line = location.get("start_line") or finding.get("line_start") or finding.get("line_number") or "?"
+        message = finding.get("message") or finding.get("description") or ""
+        snippet = finding.get("snippet") or finding.get("code_snippet") or ""
+
+        with st.expander(f"{icon} **{rule}** — `{file_path}` line {line}  [{severity.upper()}]"):
+            if message:
+                st.markdown(f"**What needs to change:** {message}")
+            if snippet:
+                st.code(snippet, language="python")
 
 
 def _show_evidence(report: dict[str, Any]) -> None:
@@ -491,10 +506,12 @@ else:
                 _show_validation(report)
             with exports:
                 _show_exports(str(analysis_id), report)
-            st.subheader("Feedback")
-            comment = st.text_area("Comment", max_chars=2000)
-            col_yes, col_no = st.columns(2)
-            if col_yes.button("Useful"):
-                _post_feedback(str(analysis_id), True, comment)
-            if col_no.button("Not useful"):
-                _post_feedback(str(analysis_id), False, comment)
+                st.divider()
+                st.markdown("#### Was this analysis helpful?")
+                st.caption("Your feedback improves future analyses.")
+                comment = st.text_area("Add a comment (optional)", max_chars=2000, key="feedback_comment")
+                col_yes, col_no, _ = st.columns([1, 1, 3])
+                if col_yes.button("👍 Useful", use_container_width=True):
+                    _post_feedback(str(analysis_id), True, comment)
+                if col_no.button("👎 Not useful", use_container_width=True):
+                    _post_feedback(str(analysis_id), False, comment)
