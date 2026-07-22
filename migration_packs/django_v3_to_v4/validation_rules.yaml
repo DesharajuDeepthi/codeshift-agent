@@ -1,0 +1,58 @@
+version: "1.0.0"
+
+rules:
+  - validator_id: V-FILE-REF
+    description: All file references in plan claims must exist in the repository profile
+    severity: BLOCKING
+    check: file_reference_exists
+    message_template: "Claim references file {file} which was not found in the repository profile."
+
+  - validator_id: V-EVIDENCE
+    description: Every claim must cite at least one source_id or finding_id
+    severity: BLOCKING
+    check: claim_has_evidence
+    message_template: "Claim {claim_id} has no cited evidence (source_id or finding_id)."
+
+  - validator_id: V-RULE
+    description: All finding_ids cited in claims must exist in the scan result
+    severity: BLOCKING
+    check: finding_id_exists
+    message_template: "Claim {claim_id} cites unknown finding_id {finding_id}."
+
+  - validator_id: V-SOURCE
+    description: All source_ids cited in claims must appear in trusted_sources.yaml
+    severity: BLOCKING
+    check: source_id_in_allowlist
+    message_template: "Claim {claim_id} cites source_id {source_id} not in pack's trusted sources."
+
+  - validator_id: V-RISK
+    description: Risk assessment must reference at least one detection rule
+    severity: REPAIRABLE
+    check: risk_has_rule_reference
+    message_template: "Risk assessment has no detection rule references."
+
+  - validator_id: V-PROHIBITED-CLAIM
+    description: Claims must not make execution, time-estimate, or certainty assertions
+    severity: BLOCKING
+    check: no_prohibited_claim_patterns
+    message_template: "Claim {claim_id} contains prohibited language: {pattern}."
+    patterns:
+      - "will fix"
+      - "will solve"
+      - "guarantees"
+      - "definitely"
+      - "certainly"
+      - "hours"
+      - "minutes"
+      - "days"
+      - "run the script"
+      - "execute"
+      - "deploy"
+
+  - validator_id: V-GROUNDING
+    description: Every claim must be grounded in cited evidence
+    severity: REPAIRABLE
+    check: claim_grounded_in_evidence
+    message_template: >
+      Claim {claim_id} text does not reference its cited evidence IDs.
+      Claims must connect assertions to specific findings or documentation.

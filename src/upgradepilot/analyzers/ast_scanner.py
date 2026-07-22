@@ -684,6 +684,22 @@ def scan_file(
     return findings, True
 
 
+class PythonASTAnalyzer:
+    """
+    LanguageAnalyzer implementation for Python using AST-first analysis.
+
+    Delegates to scan_workspace() below.  Registered in analyzers/registry.py
+    under the "python-ast" kind.
+    """
+
+    @property
+    def analyzer_kind(self) -> str:
+        return "python-ast"
+
+    def scan(self, workspace: Path, pack: LoadedMigrationPack) -> ScanResult:
+        return scan_workspace(workspace, pack)
+
+
 def scan_workspace(
     workspace: Path,
     pack: LoadedMigrationPack,

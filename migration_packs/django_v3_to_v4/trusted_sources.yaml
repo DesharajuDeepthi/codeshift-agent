@@ -1,0 +1,25 @@
+version: "1.0.0"
+
+allowed_domains:
+  - docs.djangoproject.com
+
+sources:
+  - source_id: DJANGO_V4_MIGRATION_GUIDE
+    title: "Django 4.0 release notes — Backwards incompatible changes"
+    canonical_url: "https://docs.djangoproject.com/en/4.0/releases/4.0/"
+    domain: docs.djangoproject.com
+    kind: migration_guide
+    curated_snapshot_version: "1.0.0"
+    notes: >
+      Official Django 4.0 release notes covering all backwards-incompatible
+      changes from Django 3.x.
+
+  - source_id: DJANGO_V4_CHANGELOG
+    title: "Django 4.1 release notes"
+    canonical_url: "https://docs.djangoproject.com/en/4.1/releases/4.1/"
+    domain: docs.djangoproject.com
+    kind: changelog
+    curated_snapshot_version: "1.0.0"
+    notes: >
+      Django 4.1 release notes — includes CONN_HEALTH_CHECKS and other
+      changes relevant to projects upgrading past 4.0.

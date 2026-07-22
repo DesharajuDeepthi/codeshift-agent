@@ -28,11 +28,27 @@ from upgradepilot.graph.state import (
 _NODE_PROFILE = "profile_repository"
 
 _FIXTURE_PROFILE: dict[str, Any] = {
+    # Multi-language fields (new in profiler v2.0.0)
+    "source_files_by_language": {"python": ["src/app/models.py", "src/app/schemas.py"]},
+    "detected_languages": ["python"],
+    "primary_language": "python",
+    # Python-specific (backward compat)
     "python_file_count": 12,
     "python_files": ["src/app/models.py", "src/app/schemas.py"],
     "source_roots": ["src"],
     "manifest_files": [{"path": "pyproject.toml", "kind": "pyproject_toml", "parse_error": None}],
-    "all_dependencies": [],
+    "all_dependencies": [
+        {
+            "package": "pydantic",
+            "normalized_name": "pydantic",
+            "constraint": {"raw": ">=1.9,<2", "kind": "range", "lower": "1.9", "upper": "2"},
+            "manifest_path": "pyproject.toml",
+            "line": 12,
+            "parser": "pyproject_toml",
+            "parser_version": "1.0.0",
+            "confidence": 1.0,
+        }
+    ],
     "pydantic_dependencies": [
         {
             "package": "pydantic",
@@ -64,11 +80,12 @@ _FIXTURE_PROFILE: dict[str, Any] = {
         "has_pydantic_imports": True,
         "python_file_count": 12,
     },
-    "profiler_version": "1.0.0",
+    "profiler_version": "2.0.0",
 }
 
 _FIXTURE_PROFILE_NOT_APPLICABLE: dict[str, Any] = {
     **_FIXTURE_PROFILE,
+    "all_dependencies": [],
     "pydantic_dependencies": [],
     "applicability": {
         "pydantic_signal": "not_found",
@@ -81,6 +98,18 @@ _FIXTURE_PROFILE_NOT_APPLICABLE: dict[str, Any] = {
 
 _FIXTURE_PROFILE_UNSUPPORTED: dict[str, Any] = {
     **_FIXTURE_PROFILE,
+    "all_dependencies": [
+        {
+            "package": "pydantic",
+            "normalized_name": "pydantic",
+            "constraint": {"raw": ">=2", "kind": "bounded", "lower": "2", "upper": None},
+            "manifest_path": "pyproject.toml",
+            "line": 12,
+            "parser": "pyproject_toml",
+            "parser_version": "1.0.0",
+            "confidence": 1.0,
+        }
+    ],
     "pydantic_dependencies": [
         {
             "package": "pydantic",
@@ -183,7 +212,7 @@ async def select_migration_pack(state: UpgradePilotState) -> dict[str, Any]:
             "node_executions": [node_record(_NODE_PACK, started)],
         }
 
-    # STANDARD mode: run applicability assessment from profile
+    # STANDARD mode: run pack-driven applicability assessment from profile.
     profile_dict = state.get("profile")
     if not profile_dict:
         return {
@@ -193,35 +222,58 @@ async def select_migration_pack(state: UpgradePilotState) -> dict[str, Any]:
         }
 
     try:
+        from pathlib import Path
+
+        from upgradepilot.migration.applicability import ApplicabilityEngine
+        from upgradepilot.migration.errors import PackNotFoundError
+        from upgradepilot.migration.loader import load_all_packs
         from upgradepilot.models.profile import RepositoryProfile
+        from upgradepilot.models.snapshot import RepositorySnapshot
 
         profile = RepositoryProfile.model_validate(profile_dict)
         pack_id = state.get("request_data", {}).get("migration_pack", _PACK_ID)
-        warnings: list[str] = []
-        pydantic_deps = profile.pydantic_dependencies
-        if not pydantic_deps:
-            status = ApplicabilityStatus.NOT_APPLICABLE
-            warnings.append("No Pydantic dependency detected in this repository.")
-        else:
-            # Check if already on v2 (constraint lower bound >= 2)
-            already_v2 = any(
-                dep.constraint and dep.constraint.lower and dep.constraint.lower.startswith("2")
-                for dep in pydantic_deps
-            )
-            if already_v2:
-                status = ApplicabilityStatus.UNSUPPORTED
-                warnings.append("Repository appears to already use Pydantic v2.")
-            else:
-                status = ApplicabilityStatus.SUPPORTED
+
+        registry = load_all_packs()
+        try:
+            pack = registry.get(pack_id)
+        except PackNotFoundError:
+            available = registry.list_ids()
+            return {
+                "applicability_status": ApplicabilityStatus.ERROR,
+                "pack_id": pack_id,
+                "node_executions": [node_error_record(_NODE_PACK, started, "PACK_NOT_FOUND")],
+                "errors": [
+                    graph_error(
+                        _NODE_PACK,
+                        "PACK_NOT_FOUND",
+                        f"Migration pack {pack_id!r} not found. Available: {available}",
+                    )
+                ],
+            }
+
+        # Resolve workspace path for code-signal evaluation (optional).
+        workspace: Path | None = None
+        snapshot_dict = state.get("snapshot")
+        if snapshot_dict:
+            snapshot = RepositorySnapshot.model_validate(snapshot_dict)
+            workspace = Path(snapshot.workspace_path)
+
+        engine = ApplicabilityEngine(pack)
+        assessment = engine.assess(profile, workspace)
+
         extra: dict[str, Any] = {}
-        if warnings:
-            extra["warnings"] = warnings
+        if assessment.warnings:
+            extra["warnings"] = assessment.warnings
+
+        # Map assessment status to ApplicabilityStatus enum.
+        # ApplicabilityEngine returns ApplicabilityStatus directly.
         return {
-            "applicability_status": status,
+            "applicability_status": assessment.status,
             "pack_id": pack_id,
             "node_executions": [node_record(_NODE_PACK, started)],
             **extra,
         }
+
     except Exception as exc:
         return {
             "applicability_status": ApplicabilityStatus.ERROR,

@@ -1,0 +1,130 @@
+# Applicability rules for the django-v3-to-v4 migration pack.
+#
+# Detection strategy:
+#   1. Confirm Python is the primary language.
+#   2. Find a django dependency in manifests with a v3.x constraint.
+#   3. Use code signals to rule out repos already fully on v4.
+
+version: "1.0.0"
+
+# ─── Manifest-based signals ───────────────────────────────────────────────────
+
+manifest_signals:
+  # Django must appear in at least one manifest
+  - signal_id: django_present
+    kind: manifest_constraint
+    package: django
+    required: true
+    absence_status: NOT_APPLICABLE
+    description: >
+      Django must appear in at least one dependency manifest.
+      Without it the repository does not use Django at all.
+
+  # Exact v3 pin
+  - signal_id: exact_v3_version
+    kind: manifest_constraint
+    package: django
+    constraint_kind: exact
+    version_prefix: "3."
+    result_status: SUPPORTED
+    confidence: 0.99
+    description: Exact Django==3.x pin confirms v3.
+
+  # Bounded <4
+  - signal_id: bounded_lt4
+    kind: manifest_constraint
+    package: django
+    constraint_kind: bounded
+    upper_lt: "4"
+    result_status: SUPPORTED
+    confidence: 0.97
+    description: Upper bound <4 (e.g. >=3.2,<4) confirms Django v3.
+
+  # Already on v4
+  - signal_id: exact_v4_version
+    kind: manifest_constraint
+    package: django
+    constraint_kind: exact
+    version_prefix: "4."
+    result_status: NOT_APPLICABLE
+    confidence: 0.99
+    description: Exact Django==4.x pin — already migrated.
+
+  # Lower bound >=4
+  - signal_id: lower_gte_4
+    kind: manifest_constraint
+    package: django
+    constraint_kind: bounded
+    lower_gte: "4"
+    result_status: NOT_APPLICABLE
+    confidence: 0.99
+    description: Lower bound >=4.0 — repository already requires Django v4.
+
+  # Unpinned
+  - signal_id: unpinned_django
+    kind: manifest_constraint
+    package: django
+    constraint_kind: unpinned
+    result_status: PROBABLE_NEEDS_REVIEW
+    confidence: 0.5
+    description: >
+      Unpinned Django dependency.  Cannot determine version without a lock
+      file.  Flags for human review.
+
+# ─── Code-pattern signals ─────────────────────────────────────────────────────
+
+code_signals:
+  # Python must be present (short-circuit for non-Python repos)
+  - signal_id: python_language_present
+    kind: language_present
+    language: python
+    result_status: SUPPORTED
+    confidence: 0.5
+    description: Repository must contain Python source files.
+
+  # v3-only: CONN_MAX_AGE in DATABASES setting without CONN_HEALTH_CHECKS
+  - signal_id: v3_conn_max_age
+    kind: v1_api_usage
+    pattern: "CONN_MAX_AGE"
+    result_status: SUPPORTED
+    confidence: 0.7
+    description: >
+      CONN_MAX_AGE is a Django v3 database setting.  In v4 it should be
+      paired with CONN_HEALTH_CHECKS to avoid stale connections.
+
+  # v3-only: USE_L10N = True (default changed to True in v4, explicit = likely v3)
+  - signal_id: v3_use_l10n
+    kind: v1_api_usage
+    pattern: "USE_L10N\\s*=\\s*True"
+    result_status: SUPPORTED
+    confidence: 0.6
+    description: >
+      USE_L10N is deprecated in Django v4; the default is now True and the
+      setting will be removed in v5.
+
+  # v3-only: DEFAULT_AUTO_FIELD absent in settings (Django v3 default)
+  - signal_id: v3_no_default_auto_field
+    kind: v1_api_usage
+    pattern: "DEFAULT_AUTO_FIELD"
+    result_status: SUPPORTED
+    confidence: 0.5
+    description: >
+      Django 3.2+ warns when DEFAULT_AUTO_FIELD is not set.  Finding its
+      explicit declaration indicates awareness of the v3→v4 migration.
+
+  # v4 indicator: CSRF_TRUSTED_ORIGINS with full scheme URLs (v4 format)
+  - signal_id: v4_csrf_trusted_origins
+    kind: v2_api_usage
+    pattern: "CSRF_TRUSTED_ORIGINS\\s*=\\s*\\["
+    result_status: NOT_APPLICABLE
+    confidence: 0.6
+    description: >
+      CSRF_TRUSTED_ORIGINS in v4 requires full URL schemes; repos already
+      using the v4 format are likely already migrated.
+
+# ─── Aggregation rules ────────────────────────────────────────────────────────
+
+aggregation:
+  not_applicable_threshold: 0.9
+  supported_threshold: 0.9
+  default_status: PROBABLE_NEEDS_REVIEW

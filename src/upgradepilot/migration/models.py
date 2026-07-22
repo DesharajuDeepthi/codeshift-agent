@@ -80,12 +80,24 @@ class MigrationPackMetadata(BaseModel):
     display_name: str
     description: str
 
+    # ── Language and analysis strategy ────────────────────────────────────
+    # language: canonical lower-case language identifier, e.g. "python".
+    # analyzer_kind: maps to a LanguageAnalyzer in analyzers/registry.py.
+    # Both default to "python" / "python-ast" for backward compatibility with
+    # packs written before multi-language support was added.
+    language: str = "python"
+    analyzer_kind: str = "python-ast"
+
     source_package: str
     source_major: int
     target_major: int
 
     supported_manifest_formats: list[str]
-    supported_python_syntax_versions: list[str]
+
+    # supported_syntax_versions supersedes supported_python_syntax_versions.
+    # Both fields are accepted; new packs should use supported_syntax_versions.
+    supported_syntax_versions: list[str] = Field(default_factory=list)
+    supported_python_syntax_versions: list[str] = Field(default_factory=list)
 
     curated_source_snapshot_version: str
     detector_version: str
@@ -93,6 +105,10 @@ class MigrationPackMetadata(BaseModel):
     prompt_versions: PromptVersions
 
     required_files: list[str] = Field(default_factory=list)
+
+    def effective_syntax_versions(self) -> list[str]:
+        """Return supported syntax versions from whichever field is populated."""
+        return self.supported_syntax_versions or self.supported_python_syntax_versions
 
     @field_validator("pack_id")
     @classmethod

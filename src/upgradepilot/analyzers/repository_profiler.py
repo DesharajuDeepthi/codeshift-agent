@@ -31,7 +31,39 @@ from upgradepilot.models.profile import (
 
 logger = logging.getLogger(__name__)
 
-PROFILER_VERSION = "1.0.0"
+PROFILER_VERSION = "2.0.0"
+
+# ---------------------------------------------------------------------------
+# Multi-language extension map
+# ---------------------------------------------------------------------------
+
+_EXT_TO_LANGUAGE: dict[str, str] = {
+    ".py": "python",
+    ".pyi": "python",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".rb": "ruby",
+    ".php": "php",
+    ".cs": "csharp",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".c": "c",
+    ".h": "c",
+    ".swift": "swift",
+    ".scala": "scala",
+    ".clj": "clojure",
+    ".ex": "elixir",
+    ".exs": "elixir",
+}
 
 # ---------------------------------------------------------------------------
 # Directory exclusion patterns
@@ -308,6 +340,8 @@ def profile_repository(workspace: Path) -> RepositoryProfile:
     excluded_paths: list[str] = []
     syntax_errors: list[SyntaxError_] = []
     has_pydantic_imports = False
+    # Multi-language tracking
+    source_files_by_language: dict[str, list[str]] = {}
 
     ci_systems: set[CISystem] = set()
     test_frameworks: set[TestingFramework] = set()
@@ -341,6 +375,11 @@ def profile_repository(workspace: Path) -> RepositoryProfile:
 
         rel = _rel_posix(path, workspace)
         name = path.name
+
+        # --- Multi-language source file tracking ---
+        lang = _EXT_TO_LANGUAGE.get(path.suffix)
+        if lang:
+            source_files_by_language.setdefault(lang, []).append(rel)
 
         # --- Python files ---
         if path.suffix == ".py":
@@ -450,10 +489,10 @@ def profile_repository(workspace: Path) -> RepositoryProfile:
     # --- Source roots ---
     source_roots = _detect_source_roots(python_files)
 
-    # --- Pydantic evidence ---
+    # --- Pydantic evidence (backward compat) ---
     pydantic_deps = [d for d in all_deps if d.normalized_name in _PYDANTIC_NAMES]
 
-    # --- Pydantic signal ---
+    # --- Pydantic signal (backward compat) ---
     signal = _detect_pydantic_signal(pydantic_deps, has_pydantic_imports)
 
     applicability = ApplicabilitySignals(
@@ -472,13 +511,25 @@ def profile_repository(workspace: Path) -> RepositoryProfile:
         config_files=test_config_files,
     )
 
+    # --- Multi-language summary ---
+    detected_languages = sorted(
+        source_files_by_language.keys(),
+        key=lambda lang: len(source_files_by_language[lang]),
+        reverse=True,
+    )
+    primary_language = detected_languages[0] if detected_languages else None
+
     logger.info(
-        "Repository profiled: python_files=%d pydantic_signal=%s",
+        "Repository profiled: python_files=%d pydantic_signal=%s languages=%s",
         len(python_files),
         signal,
+        detected_languages,
     )
 
     return RepositoryProfile(
+        source_files_by_language=source_files_by_language,
+        detected_languages=detected_languages,
+        primary_language=primary_language,
         python_files=python_files,
         python_file_count=len(python_files),
         source_roots=source_roots,

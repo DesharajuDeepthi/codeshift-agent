@@ -85,12 +85,25 @@ class TestAnalysisRequest:
         with pytest.raises(ValidationError):
             AnalysisRequest(repository_url="not-a-url")
 
-    def test_unsupported_migration_pack(self) -> None:
-        with pytest.raises(ValidationError):
-            AnalysisRequest(
-                repository_url="https://github.com/owner/repo",
-                migration_pack="unknown-pack",
-            )
+    def test_invalid_migration_pack_format(self) -> None:
+        # Only format is validated at construction time; existence is checked
+        # by the select_migration_pack graph node at analysis time.
+        # Invalid formats (uppercase, path separators, empty) must still be rejected.
+        for bad in ["UPPER-CASE", "has/slash", "has space", ""]:
+            with pytest.raises(ValidationError, match="migration_pack|pack"):
+                AnalysisRequest(
+                    repository_url="https://github.com/owner/repo",
+                    migration_pack=bad,
+                )
+
+    def test_valid_format_unknown_pack_accepted(self) -> None:
+        # A well-formed pack ID that doesn't exist yet is accepted at construction;
+        # the graph node will reject it with a typed error.
+        req = AnalysisRequest(
+            repository_url="https://github.com/owner/repo",
+            migration_pack="future-pack-v1-to-v2",
+        )
+        assert req.migration_pack == "future-pack-v1-to-v2"
 
     def test_custom_ref(self) -> None:
         req = AnalysisRequest(

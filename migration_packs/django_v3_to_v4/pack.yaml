@@ -1,33 +1,26 @@
-pack_id: pydantic-v1-to-v2
+pack_id: django-v3-to-v4
 version: "1.0.0"
-display_name: "Pydantic v1 → v2"
+display_name: "Django v3 → v4"
 description: >
-  Detects Pydantic v1 usage patterns and produces an evidence-backed migration
-  plan for upgrading to Pydantic v2.  All findings are derived from official
-  Pydantic documentation; no speculative recommendations are made.
+  Detects Django v3.x usage patterns and produces an evidence-backed migration
+  plan for upgrading to Django v4.x.  Covers URL configuration changes,
+  timezone-aware datetime handling, database connection changes, form API
+  updates, and removed deprecated features.
 
 # Multi-language support fields (ADR-0006)
 language: python
-analyzer_kind: python-ast
+analyzer_kind: regex
 
-source_package: pydantic
-source_major: 1
-target_major: 2
+source_package: django
+source_major: 3
+target_major: 4
 
 supported_manifest_formats:
   - requirements.txt
   - pyproject.toml-pep621
   - pyproject.toml-poetry
 
-# supported_syntax_versions supersedes supported_python_syntax_versions.
-# Both are kept here during the migration period.
 supported_syntax_versions:
-  - "3.8"
-  - "3.9"
-  - "3.10"
-  - "3.11"
-  - "3.12"
-supported_python_syntax_versions:
   - "3.8"
   - "3.9"
   - "3.10"
