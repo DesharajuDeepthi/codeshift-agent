@@ -180,12 +180,16 @@ async def test_symlink_rejected(tmp_path: Path, httpx_mock: pytest_httpx.HTTPXMo
     )
     async with httpx.AsyncClient() as http:
         dl = _make_downloader(tmp_path, http_client=http)
-        with pytest.raises(SafetyLimitError, match="(?i)symlink"):
-            await dl.download_and_extract(
-                url="https://codeload.github.com/owner/repo/tar.gz/abc123",
-                headers={},
-                analysis_id="test-symlink",
-            )
+        # Symlinks are now silently skipped (not extracted) rather than rejected,
+        # so no error is raised and no symlink appears on disk.
+        await dl.download_and_extract(
+            url="https://codeload.github.com/owner/repo/tar.gz/abc123",
+            headers={},
+            analysis_id="test-symlink",
+        )
+        # Confirm the symlink was not materialised
+        assert not (tmp_path / "evil_link").exists()
+        assert not any(p.is_symlink() for p in tmp_path.rglob("*"))
 
 
 # ---------------------------------------------------------------------------
