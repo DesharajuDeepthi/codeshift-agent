@@ -5,8 +5,10 @@ from __future__ import annotations
 import functools
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
+
+from upgradepilot.services.findings_store import FindingsStore, PackStats
 
 if TYPE_CHECKING:
     from upgradepilot.migration.loader import MigrationPackRegistry
@@ -35,6 +37,18 @@ def _load_registry() -> MigrationPackRegistry:
     from upgradepilot.migration.loader import load_all_packs
 
     return load_all_packs()
+
+
+@router.get("/{pack_id}/stats", response_model=PackStats)
+async def get_pack_stats(pack_id: str, req: Request) -> PackStats:
+    """Return fleet-wide rule frequency statistics for a migration pack."""
+    findings_store: FindingsStore | None = getattr(req.app.state, "findings_store", None)
+    if findings_store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="cross-analysis memory is not enabled",
+        )
+    return await findings_store.rule_frequency(pack_id)
 
 
 @router.get("", response_model=PacksListResponse)

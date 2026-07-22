@@ -251,8 +251,16 @@ DETECTION_CASES: list[DetectionCase] = [
 # ---------------------------------------------------------------------------
 
 _DJG_FORBIDDEN = [
-    "DJG001", "DJG002", "DJG003", "DJG004", "DJG005",
-    "DJG006", "DJG007", "DJG008", "DJG009", "DJG010",
+    "DJG001",
+    "DJG002",
+    "DJG003",
+    "DJG004",
+    "DJG005",
+    "DJG006",
+    "DJG007",
+    "DJG008",
+    "DJG009",
+    "DJG010",
 ]
 
 DJANGO_DETECTION_CASES: list[DetectionCase] = [

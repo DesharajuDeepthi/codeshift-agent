@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, cast
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ from upgradepilot.config import AnalysisMode, get_settings
 from upgradepilot.graph.build import build_graph
 from upgradepilot.graph.checkpointer import get_memory_checkpointer, get_postgres_checkpointer
 from upgradepilot.graph.state import FIXTURE_SUPPORTED, AnalysisStatus, make_initial_state
+from upgradepilot.models.finding import MigrationFinding
 from upgradepilot.models.request import AnalysisRequest
 from upgradepilot.observability.logging import get_logger
 from upgradepilot.observability.tracing import UserFeedback, attach_user_feedback
@@ -29,6 +30,7 @@ from upgradepilot.reports.render import (
     report_json_bytes,
     safe_report,
 )
+from upgradepilot.services.findings_store import FindingsDelta, FindingsStore
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/analyses", tags=["analyses"])
@@ -211,17 +213,108 @@ class _AnalysisStore:
 STORE = _AnalysisStore()
 
 
+# ---------------------------------------------------------------------------
+# Cross-analysis memory helpers
+# ---------------------------------------------------------------------------
+
+
+async def _persist_findings(
+    findings_store: FindingsStore,
+    analysis_id: str,
+    final_state: dict[str, Any],
+) -> None:
+    """Fire-and-forget: persist findings and write delta back to the analysis."""
+    try:
+        snapshot = final_state.get("snapshot") or {}
+        repo_url: str = str(snapshot.get("repository_url") or "")
+        # Parse owner/repo from URL: last two path segments of the URL minus .git
+        owner, repo = _parse_owner_repo(repo_url)
+        commit_sha: str = str(snapshot.get("commit_sha") or final_state.get("commit_sha") or "")
+        pack_id: str = str(final_state.get("pack_id") or "")
+        pack_version: str = str(final_state.get("pack_version") or "")
+
+        raw_findings: list[Any] = final_state.get("findings") or []
+        findings: list[MigrationFinding] = []
+        for item in raw_findings:
+            if isinstance(item, MigrationFinding):
+                findings.append(item)
+            elif isinstance(item, dict):
+                try:
+                    findings.append(MigrationFinding.model_validate(item))
+                except Exception:
+                    logger.debug(
+                        "Skipping malformed finding dict during persistence",
+                        extra={"event": "finding_parse_skip"},
+                    )
+
+        await findings_store.persist_analysis(
+            analysis_id=analysis_id,
+            pack_id=pack_id,
+            pack_version=pack_version,
+            report_status="validated",
+            owner=owner,
+            repo=repo,
+            commit_sha=commit_sha,
+            findings=findings,
+        )
+
+        if owner and repo:
+            delta = await findings_store.delta_vs_previous(owner, repo, analysis_id)
+            await STORE.update(analysis_id, {"delta": delta.model_dump(mode="json")})
+    except Exception:
+        logger.warning(
+            "Failed to persist findings; cross-analysis memory skipped",
+            extra={"event": "findings_persist_error", "analysis_id": analysis_id},
+            exc_info=True,
+        )
+
+
+def _parse_owner_repo(repository_url: str) -> tuple[str, str]:
+    """Extract (owner, repo) from a GitHub-style URL. Returns ('', '') on failure."""
+    url = repository_url.rstrip("/").removesuffix(".git")
+    parts = [p for p in url.split("/") if p]
+    if len(parts) >= 2:
+        return parts[-2], parts[-1]
+    return "", ""
+
+
+@router.get("/{analysis_id}/delta", response_model=FindingsDelta)
+async def get_analysis_delta(analysis_id: str, req: Request) -> FindingsDelta:
+    """Return the cross-analysis delta for a completed validated analysis."""
+    record = await STORE.get(analysis_id)
+    if record.report_status not in ("validated",):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="delta is only available for validated analyses",
+        )
+    delta_raw = record.state.get("delta")
+    if delta_raw is None:
+        findings_store: FindingsStore | None = getattr(req.app.state, "findings_store", None)
+        if findings_store is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="cross-analysis memory is not enabled",
+            )
+        snapshot = record.state.get("snapshot") or {}
+        owner, repo = _parse_owner_repo(str(snapshot.get("repository_url") or ""))
+        return await findings_store.delta_vs_previous(owner, repo, analysis_id)
+    return FindingsDelta.model_validate(delta_raw)
+
+
 @router.post("", response_model=AnalysisCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analysis(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
+    req: Request,
 ) -> AnalysisCreateResponse:
     """Create an analysis and start graph execution."""
+    findings_store: FindingsStore | None = getattr(req.app.state, "findings_store", None)
+    is_fixture = request.analysis_mode == AnalysisMode.FIXTURE
     record = await STORE.create(request)
-    if request.analysis_mode == AnalysisMode.FIXTURE:
-        await _run_analysis(record.analysis_id)
+    if is_fixture:
+        await _run_analysis(record.analysis_id, findings_store=None)
     else:
-        background_tasks.add_task(_run_analysis, record.analysis_id)
+        background_tasks.add_task(_run_analysis, record.analysis_id, findings_store)
     return _create_response(record.analysis_id, (await STORE.get(record.analysis_id)).status)
 
 
@@ -304,7 +397,7 @@ async def submit_feedback(analysis_id: str, feedback: FeedbackRequest) -> Feedba
     )
 
 
-async def _run_analysis(analysis_id: str) -> None:
+async def _run_analysis(analysis_id: str, findings_store: FindingsStore | None = None) -> None:
     record = await STORE.get(analysis_id)
     await STORE.update(analysis_id, {"status": AnalysisStatus.RUNNING.value})
     start = time.perf_counter()
@@ -336,6 +429,11 @@ async def _run_analysis(analysis_id: str) -> None:
                 else AnalysisStatus.FAILED.value
             )
         await STORE.finish(analysis_id, status_value=status_value)
+
+        # Fire-and-forget cross-analysis persistence (skipped in fixture mode)
+        if findings_store is not None and final.report_status == "validated":
+            asyncio.create_task(_persist_findings(findings_store, analysis_id, final.state))
+
         logger.info(
             "Analysis finished through API",
             extra={
