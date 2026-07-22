@@ -231,25 +231,7 @@ async def select_migration_pack(state: UpgradePilotState) -> dict[str, Any]:
         from upgradepilot.models.snapshot import RepositorySnapshot
 
         profile = RepositoryProfile.model_validate(profile_dict)
-        pack_id = state.get("request_data", {}).get("migration_pack", _PACK_ID)
-
-        registry = load_all_packs()
-        try:
-            pack = registry.get(pack_id)
-        except PackNotFoundError:
-            available = registry.list_ids()
-            return {
-                "applicability_status": ApplicabilityStatus.ERROR,
-                "pack_id": pack_id,
-                "node_executions": [node_error_record(_NODE_PACK, started, "PACK_NOT_FOUND")],
-                "errors": [
-                    graph_error(
-                        _NODE_PACK,
-                        "PACK_NOT_FOUND",
-                        f"Migration pack {pack_id!r} not found. Available: {available}",
-                    )
-                ],
-            }
+        pack_id_from_request: str | None = state.get("request_data", {}).get("migration_pack")
 
         # Resolve workspace path for code-signal evaluation (optional).
         workspace: Path | None = None
@@ -258,26 +240,109 @@ async def select_migration_pack(state: UpgradePilotState) -> dict[str, Any]:
             snapshot = RepositorySnapshot.model_validate(snapshot_dict)
             workspace = Path(snapshot.workspace_path)
 
-        engine = ApplicabilityEngine(pack)
-        assessment = engine.assess(profile, workspace)
+        registry = load_all_packs()
 
-        extra: dict[str, Any] = {}
-        if assessment.warnings:
-            extra["warnings"] = assessment.warnings
+        if pack_id_from_request:
+            # ── User-specified pack path ────────────────────────────────────
+            try:
+                pack = registry.get(pack_id_from_request)
+            except PackNotFoundError:
+                available = registry.list_ids()
+                return {
+                    "applicability_status": ApplicabilityStatus.ERROR,
+                    "pack_id": pack_id_from_request,
+                    "pack_candidates": [],
+                    "node_executions": [node_error_record(_NODE_PACK, started, "PACK_NOT_FOUND")],
+                    "errors": [
+                        graph_error(
+                            _NODE_PACK,
+                            "PACK_NOT_FOUND",
+                            f"Migration pack {pack_id_from_request!r} not found. "
+                            f"Available: {available}",
+                        )
+                    ],
+                }
 
-        # Map assessment status to ApplicabilityStatus enum.
-        # ApplicabilityEngine returns ApplicabilityStatus directly.
-        return {
-            "applicability_status": assessment.status,
-            "pack_id": pack_id,
+            engine = ApplicabilityEngine(pack)
+            assessment = engine.assess(profile, workspace)
+            extra: dict[str, Any] = {}
+            if assessment.warnings:
+                extra["warnings"] = assessment.warnings
+            return {
+                "applicability_status": assessment.status,
+                "pack_id": pack_id_from_request,
+                "pack_candidates": [],
+                "node_executions": [node_record(_NODE_PACK, started)],
+                **extra,
+            }
+
+        # ── Auto-detect path: score every installed pack ────────────────────
+        _STATUS_RANK = {"SUPPORTED": 0, "PROBABLE_NEEDS_REVIEW": 1}
+        candidates: list[dict[str, Any]] = []
+        for pid in registry.list_ids():
+            pack = registry.get(pid)
+            engine = ApplicabilityEngine(pack)
+            assessment = engine.assess(profile, workspace)
+            candidates.append(
+                {
+                    "pack_id": pid,
+                    "display_name": pack.metadata.display_name,
+                    "status": assessment.status.value,
+                    "confidence": assessment.confidence,
+                }
+            )
+
+        candidates.sort(key=lambda c: (_STATUS_RANK.get(c["status"], 99), -c["confidence"]))
+
+        best = next(
+            (c for c in candidates if c["status"] in ("SUPPORTED", "PROBABLE_NEEDS_REVIEW")),
+            None,
+        )
+        if best is None:
+            tried = [c["pack_id"] for c in candidates]
+            return {
+                "applicability_status": ApplicabilityStatus.NOT_APPLICABLE,
+                "pack_id": "",
+                "pack_candidates": candidates,
+                "node_executions": [node_error_record(_NODE_PACK, started, "NO_APPLICABLE_PACK")],
+                "errors": [
+                    graph_error(
+                        _NODE_PACK,
+                        "NO_APPLICABLE_PACK",
+                        f"No installed migration pack applies to this repository. Tried: {tried}",
+                    )
+                ],
+            }
+
+        selected_pack_id = best["pack_id"]
+        warnings_out: list[str] = []
+        conf_gap = (
+            abs(candidates[0]["confidence"] - candidates[1]["confidence"])
+            if len(candidates) >= 2
+            else 1.0
+        )
+        if conf_gap <= 0.10:
+            alt = candidates[1]["display_name"]
+            warnings_out.append(
+                f"Auto-selected '{best['display_name']}' (confidence {best['confidence']:.2f}). "
+                f"'{alt}' is also applicable — specify migration_pack to override."
+            )
+
+        result: dict[str, Any] = {
+            "applicability_status": best["status"],
+            "pack_id": selected_pack_id,
+            "pack_candidates": candidates,
             "node_executions": [node_record(_NODE_PACK, started)],
-            **extra,
         }
+        if warnings_out:
+            result["warnings"] = warnings_out
+        return result
 
     except Exception as exc:
         return {
             "applicability_status": ApplicabilityStatus.ERROR,
-            "pack_id": state.get("request_data", {}).get("migration_pack", _PACK_ID),
+            "pack_id": state.get("request_data", {}).get("migration_pack") or "",
+            "pack_candidates": [],
             "node_executions": [node_error_record(_NODE_PACK, started, "APPLICABILITY_ERROR")],
             "errors": [graph_error(_NODE_PACK, "APPLICABILITY_ERROR", str(exc))],
         }

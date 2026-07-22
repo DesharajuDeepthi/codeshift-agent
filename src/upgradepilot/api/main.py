@@ -13,6 +13,7 @@ from upgradepilot import __version__
 from upgradepilot.api.analyses import router as analyses_router
 from upgradepilot.api.health import router as health_router
 from upgradepilot.api.middleware import PrometheusMiddleware
+from upgradepilot.api.packs import router as packs_router
 from upgradepilot.config import get_settings
 from upgradepilot.observability.logging import configure_logging, get_logger
 from upgradepilot.observability.metrics import REGISTRY
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(PrometheusMiddleware)
     app.include_router(health_router)
+    app.include_router(packs_router)
     app.include_router(analyses_router)
 
     @app.get("/metrics", include_in_schema=False)

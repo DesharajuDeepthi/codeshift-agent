@@ -88,7 +88,7 @@ class AnalysisRequest(BaseModel):
 
     repository_url: str
     ref: str = "main"
-    migration_pack: str = "pydantic-v1-to-v2"
+    migration_pack: str | None = None
     analysis_mode: AnalysisMode = AnalysisMode.STANDARD
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -116,15 +116,15 @@ class AnalysisRequest(BaseModel):
 
     @field_validator("migration_pack")
     @classmethod
-    def validate_migration_pack(cls, v: str) -> str:
-        # Validate format first (fast, no I/O).
+    def validate_migration_pack(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        # Validate format only (no I/O); existence is deferred to select_migration_pack node.
         if not _PACK_ID_RE.match(v):
             raise ValueError(
                 f"Invalid migration_pack format: {v!r}. "
                 "Pack IDs must be lowercase alphanumeric with hyphens or underscores."
             )
-        # Defer existence validation to select_migration_pack node so that
-        # the pack registry is fully loaded before the check runs.
         return v
 
     @model_validator(mode="after")

@@ -263,17 +263,36 @@ def _download_text(analysis_id: str, suffix: str) -> str:
 
 st.set_page_config(page_title="UpgradePilot", layout="wide")
 st.title("UpgradePilot")
-st.caption("Pydantic v1 to v2 migration intelligence")
+st.caption("Agentic migration intelligence — any language, any framework")
+
+# Fetch available packs once per session and cache them.
+if "available_packs" not in st.session_state:
+    try:
+        resp = _api("GET", "/packs").json()
+        st.session_state["available_packs"] = resp.get("packs", [])
+    except httpx.HTTPError:
+        st.session_state["available_packs"] = []
+
+_pack_list: list[dict[str, Any]] = st.session_state.get("available_packs", [])
+_AUTO_DETECT_LABEL = "Auto-detect (recommended)"
+_pack_options = [_AUTO_DETECT_LABEL] + [
+    f"{p['display_name']} ({p['pack_id']})" for p in _pack_list
+]
 
 with st.sidebar:
     st.header("Analysis")
     with st.form("analysis_form"):
         repository_url = st.text_input("Public GitHub repository URL")
         ref = st.text_input("Ref", value="main")
-        st.text_input("Migration pack", value="pydantic-v1-to-v2", disabled=True)
+        pack_selection = st.selectbox("Migration pack", options=_pack_options, index=0)
         analysis_mode = st.selectbox("Analysis mode", ["standard", "fixture"], index=0)
         submitted = st.form_submit_button("Start analysis", type="primary")
     if submitted:
+        # Resolve pack_id: None triggers auto-detect in the graph.
+        if pack_selection == _AUTO_DETECT_LABEL:
+            pack_id_payload: str | None = None
+        else:
+            pack_id_payload = pack_selection.split("(")[-1].rstrip(")")
         try:
             response = _api(
                 "POST",
@@ -281,7 +300,7 @@ with st.sidebar:
                 json_payload={
                     "repository_url": repository_url,
                     "ref": ref,
-                    "migration_pack": "pydantic-v1-to-v2",
+                    "migration_pack": pack_id_payload,
                     "analysis_mode": analysis_mode,
                 },
             ).json()
@@ -301,9 +320,11 @@ else:
     if status:
         current_status = status.get("status") or "unknown"
         st.progress(float(status.get("progress") or 0.0))
+        pack_label = status.get("migration_pack") or "auto-detecting…"
         st.caption(
             f"Stage: {status.get('current_stage') or 'queued'} | "
-            f"Status: {current_status}"
+            f"Status: {current_status} | "
+            f"Pack: {pack_label}"
         )
         if current_status == "running":
             _time.sleep(2)

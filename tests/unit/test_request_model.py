@@ -69,8 +69,15 @@ class TestAnalysisRequest:
         assert req.github_owner == "owner"
         assert req.github_repo == "repo"
         assert req.ref == "main"
-        assert req.migration_pack == "pydantic-v1-to-v2"
+        assert req.migration_pack is None  # auto-detect by default
         assert req.analysis_mode == AnalysisMode.STANDARD
+
+    def test_migration_pack_none_accepted(self) -> None:
+        req = AnalysisRequest(
+            repository_url="https://github.com/owner/repo",
+            migration_pack=None,
+        )
+        assert req.migration_pack is None
 
     def test_request_is_frozen(self) -> None:
         req = AnalysisRequest(repository_url="https://github.com/owner/repo")

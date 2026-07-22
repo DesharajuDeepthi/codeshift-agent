@@ -140,6 +140,7 @@ class UpgradePilotState(TypedDict):
     profile: dict[str, Any] | None  # RepositoryProfile.model_dump()
     applicability_status: str  # ApplicabilityStatus value
     pack_id: str
+    pack_candidates: list[dict[str, Any]]  # auto-detection results, ranked by confidence
 
     # ── Parallel analysis outputs ─────────────────────────────────────────
     dependencies: Annotated[list[dict[str, Any]], operator.add]
@@ -186,6 +187,7 @@ def make_initial_state(
         profile=None,
         applicability_status=ApplicabilityStatus.SUPPORTED,
         pack_id="",
+        pack_candidates=[],
         dependencies=[],
         findings=[],
         test_ci_summary=None,
