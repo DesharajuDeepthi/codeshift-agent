@@ -162,7 +162,9 @@ def _show_recommendations(report: dict[str, Any]) -> None:
         st.subheader("Migration Phases")
         for i, phase in enumerate(phases, 1):
             p = phase if isinstance(phase, dict) else {"description": str(phase)}
-            with st.expander(f"Phase {i}: {p.get('name', p.get('phase', 'Phase'))}", expanded=i == 1):
+            with st.expander(
+                f"Phase {i}: {p.get('name', p.get('phase', 'Phase'))}", expanded=i == 1
+            ):
                 st.write(p.get("description") or p.get("summary") or "")
                 files = _as_list(p.get("file_paths") or p.get("steps"))
                 for f in files:
@@ -175,11 +177,13 @@ def _show_recommendations(report: dict[str, Any]) -> None:
         rows = []
         for item in worklist:
             w = item if isinstance(item, dict) else {"path": str(item)}
-            rows.append({
-                "file": w.get("file_path") or w.get("path") or "",
-                "priority": w.get("priority") or w.get("change_type") or "",
-                "findings": w.get("findings_count") or "",
-            })
+            rows.append(
+                {
+                    "file": w.get("file_path") or w.get("path") or "",
+                    "priority": w.get("priority") or w.get("change_type") or "",
+                    "findings": w.get("findings_count") or "",
+                }
+            )
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
     # Dependency actions
@@ -187,7 +191,11 @@ def _show_recommendations(report: dict[str, Any]) -> None:
     if dep_actions:
         st.subheader("Dependency Actions")
         for item in dep_actions:
-            st.write(f"- {item}" if isinstance(item, str) else f"- {item.get('action','')}: `{item.get('package','')}`")
+            st.write(
+                f"- {item}"
+                if isinstance(item, str)
+                else f"- {item.get('action', '')}: `{item.get('package', '')}`"
+            )
 
     # Checklists
     for label, key in (
@@ -263,17 +271,34 @@ def _download_text(analysis_id: str, suffix: str) -> str:
 
 st.set_page_config(page_title="UpgradePilot", layout="wide")
 st.title("UpgradePilot")
-st.caption("Pydantic v1 to v2 migration intelligence")
+st.caption("Agentic migration intelligence — any language, any framework")
+
+# Fetch available packs once per session and cache them.
+if "available_packs" not in st.session_state:
+    try:
+        resp = _api("GET", "/packs").json()
+        st.session_state["available_packs"] = resp.get("packs", [])
+    except httpx.HTTPError:
+        st.session_state["available_packs"] = []
+
+_pack_list: list[dict[str, Any]] = st.session_state.get("available_packs", [])
+_AUTO_DETECT_LABEL = "Auto-detect (recommended)"
+_pack_options = [_AUTO_DETECT_LABEL] + [f"{p['display_name']} ({p['pack_id']})" for p in _pack_list]
 
 with st.sidebar:
     st.header("Analysis")
     with st.form("analysis_form"):
         repository_url = st.text_input("Public GitHub repository URL")
         ref = st.text_input("Ref", value="main")
-        st.text_input("Migration pack", value="pydantic-v1-to-v2", disabled=True)
+        pack_selection = st.selectbox("Migration pack", options=_pack_options, index=0)
         analysis_mode = st.selectbox("Analysis mode", ["standard", "fixture"], index=0)
         submitted = st.form_submit_button("Start analysis", type="primary")
     if submitted:
+        # Resolve pack_id: None triggers auto-detect in the graph.
+        if pack_selection == _AUTO_DETECT_LABEL:
+            pack_id_payload: str | None = None
+        else:
+            pack_id_payload = pack_selection.split("(")[-1].rstrip(")")
         try:
             response = _api(
                 "POST",
@@ -281,7 +306,7 @@ with st.sidebar:
                 json_payload={
                     "repository_url": repository_url,
                     "ref": ref,
-                    "migration_pack": "pydantic-v1-to-v2",
+                    "migration_pack": pack_id_payload,
                     "analysis_mode": analysis_mode,
                 },
             ).json()
@@ -297,13 +322,16 @@ if not analysis_id:
     st.info("Enter a public GitHub repository URL to start an analysis.")
 else:
     import time as _time
+
     status = _safe_get(f"/analyses/{analysis_id}")
     if status:
         current_status = status.get("status") or "unknown"
         st.progress(float(status.get("progress") or 0.0))
+        pack_label = status.get("migration_pack") or "auto-detecting…"
         st.caption(
             f"Stage: {status.get('current_stage') or 'queued'} | "
-            f"Status: {current_status}"
+            f"Status: {current_status} | "
+            f"Pack: {pack_label}"
         )
         if current_status == "running":
             _time.sleep(2)

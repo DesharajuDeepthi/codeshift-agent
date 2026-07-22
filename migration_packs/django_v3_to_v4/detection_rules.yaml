@@ -1,0 +1,157 @@
+version: "1.0.0"
+
+# Django v3 → v4 detection rules.
+# analyzer_kind: regex — rules use pattern matchers applied via RegexAnalyzer.
+
+rules:
+  - rule_id: DJG001
+    category: config_migration
+    severity: MEDIUM
+    rationale: >
+      DEFAULT_AUTO_FIELD must be explicitly set to avoid system check warnings
+      in Django 3.2+ and deprecation errors in Django 4.x.
+    migration_concept: Set DEFAULT_AUTO_FIELD in settings
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 3
+    matcher:
+      kind: regex
+      pattern: "class\\s+\\w+\\(models\\.Model\\):"
+      scope: python_model_file
+    confidence_ast: 0.0
+    confidence_text: 0.7
+
+  - rule_id: DJG002
+    category: config_migration
+    severity: LOW
+    rationale: >
+      USE_L10N setting is deprecated in Django 4.0.  The default is now True
+      and the setting will be removed in Django 5.0.
+    migration_concept: Remove USE_L10N from settings
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 1
+    matcher:
+      kind: regex
+      pattern: "USE_L10N\\s*="
+    confidence_ast: 0.0
+    confidence_text: 0.9
+
+  - rule_id: DJG003
+    category: config_migration
+    severity: HIGH
+    rationale: >
+      CSRF_TRUSTED_ORIGINS format changed in Django 4.0.  Values must now
+      include the scheme (e.g. https://example.com), not just the hostname.
+    migration_concept: Update CSRF_TRUSTED_ORIGINS to include URL scheme
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 8
+    matcher:
+      kind: regex
+      pattern: "CSRF_TRUSTED_ORIGINS\\s*="
+    confidence_ast: 0.0
+    confidence_text: 0.85
+
+  - rule_id: DJG004
+    category: internal_api_migration
+    severity: MEDIUM
+    rationale: >
+      django.utils.timezone.utc was removed in Django 4.0.
+      Use datetime.timezone.utc instead.
+    migration_concept: Replace django.utils.timezone.utc with datetime.timezone.utc
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 4
+    matcher:
+      kind: regex
+      pattern: "timezone\\.utc"
+    confidence_ast: 0.0
+    confidence_text: 0.8
+
+  - rule_id: DJG005
+    category: internal_api_migration
+    severity: MEDIUM
+    rationale: >
+      django.conf.urls.url() was removed in Django 4.0.
+      Use django.urls.re_path() or django.urls.path() instead.
+    migration_concept: Replace url() with path() or re_path()
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 5
+    matcher:
+      kind: ast_import
+      module: django.conf.urls
+      symbols: [url]
+    confidence_ast: 0.0
+    confidence_text: 0.95
+
+  - rule_id: DJG006
+    category: internal_api_migration
+    severity: LOW
+    rationale: >
+      django.utils.encoding.force_text() was removed in Django 4.0.
+      Use force_str() instead.
+    migration_concept: Replace force_text() with force_str()
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: regex
+      pattern: "force_text\\("
+    confidence_ast: 0.0
+    confidence_text: 0.9
+
+  - rule_id: DJG007
+    category: internal_api_migration
+    severity: LOW
+    rationale: >
+      django.utils.encoding.smart_text() was removed in Django 4.0.
+      Use smart_str() instead.
+    migration_concept: Replace smart_text() with smart_str()
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 2
+    matcher:
+      kind: regex
+      pattern: "smart_text\\("
+    confidence_ast: 0.0
+    confidence_text: 0.9
+
+  - rule_id: DJG008
+    category: internal_api_migration
+    severity: HIGH
+    rationale: >
+      django.utils.translation.ugettext() and ugettext_lazy() were removed
+      in Django 4.0.  Use gettext() and gettext_lazy() instead.
+    migration_concept: Replace ugettext*() with gettext*()
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 5
+    matcher:
+      kind: regex
+      pattern: "ugettext(?:_lazy|_noop)?\\("
+    confidence_ast: 0.0
+    confidence_text: 0.95
+
+  - rule_id: DJG009
+    category: config_migration
+    severity: HIGH
+    rationale: >
+      CONN_MAX_AGE without CONN_HEALTH_CHECKS can cause connection errors in
+      Django 4.1+.  Add CONN_HEALTH_CHECKS to database settings.
+    migration_concept: Add CONN_HEALTH_CHECKS alongside CONN_MAX_AGE
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 6
+    matcher:
+      kind: regex
+      pattern: "'CONN_MAX_AGE'\\s*:"
+    confidence_ast: 0.0
+    confidence_text: 0.8
+
+  - rule_id: DJG010
+    category: validator_migration
+    severity: MEDIUM
+    rationale: >
+      The formfield_callback argument to modelform_factory() was deprecated
+      in Django 4.2 and removed in Django 5.0.
+    migration_concept: Remove formfield_callback from modelform_factory()
+    source_ids: [DJANGO_V4_MIGRATION_GUIDE]
+    risk_points: 3
+    matcher:
+      kind: regex
+      pattern: "modelform_factory\\s*\\([^)]*formfield_callback"
+    confidence_ast: 0.0
+    confidence_text: 0.85

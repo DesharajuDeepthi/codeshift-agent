@@ -79,6 +79,16 @@ manifest_signals:
 # ─── Import / code-pattern signals ────────────────────────────────────────────
 
 code_signals:
+  # Python must be detected in the repository (fast short-circuit for non-Python repos)
+  - signal_id: python_language_present
+    kind: language_present
+    language: python
+    result_status: SUPPORTED
+    confidence: 0.5
+    description: >
+      Repository must contain Python source files.  This is a necessary but
+      not sufficient condition; manifest signals below confirm Pydantic usage.
+
   # v1-only symbols imported directly
   - signal_id: v1_validator_import
     kind: import_symbol

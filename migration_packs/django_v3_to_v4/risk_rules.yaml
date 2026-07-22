@@ -1,0 +1,80 @@
+version: "1.0.0"
+scoring_version: "1.0.0"
+max_points: 100
+
+levels:
+  - level: LOW
+    min_points: 0
+  - level: MEDIUM
+    min_points: 20
+  - level: HIGH
+    min_points: 50
+  - level: CRITICAL
+    min_points: 80
+
+rules:
+  - component_id: url_configuration
+    description: Django URL configuration changes (url() removed)
+    scoring:
+      kind: count_scaled
+      rule_ids: [DJG005]
+      points_per_occurrence: 5
+      cap: 20
+    rationale: >
+      url() removal affects every URLconf that uses regex-based routing.
+      Each occurrence requires manual remediation.
+    rule_ids: [DJG005]
+
+  - component_id: removed_utilities
+    description: Removed utility functions (force_text, smart_text, ugettext)
+    scoring:
+      kind: count_scaled
+      rule_ids: [DJG006, DJG007, DJG008]
+      points_per_occurrence: 3
+      cap: 30
+    rationale: >
+      Removed utility functions need one-for-one replacement.  High occurrence
+      counts indicate a larger refactoring effort.
+    rule_ids: [DJG006, DJG007, DJG008]
+
+  - component_id: csrf_configuration
+    description: CSRF_TRUSTED_ORIGINS format change
+    scoring:
+      kind: boolean
+      rule_ids: [DJG003]
+      points_if_true: 15
+    rationale: >
+      CSRF_TRUSTED_ORIGINS must be updated to include URL schemes.
+      This is a deployment-level configuration change with security implications.
+    rule_ids: [DJG003]
+
+  - component_id: database_configuration
+    description: Database connection health check configuration
+    scoring:
+      kind: boolean
+      rule_ids: [DJG009]
+      points_if_true: 10
+    rationale: >
+      Long-lived connections without health checks can cause runtime errors
+      in Django 4.1+.
+    rule_ids: [DJG009]
+
+  - component_id: no_tests
+    description: Absence of test files
+    scoring:
+      kind: boolean
+      rule_ids: []
+      points_if_true: 15
+    rationale: >
+      Without tests, migration correctness cannot be verified automatically.
+    source: test_profile.test_files
+
+  - component_id: no_ci
+    description: Absence of CI configuration
+    scoring:
+      kind: boolean
+      rule_ids: []
+      points_if_true: 10
+    rationale: >
+      Without CI, regressions introduced by the migration may not be caught.
+    source: test_profile.ci_systems

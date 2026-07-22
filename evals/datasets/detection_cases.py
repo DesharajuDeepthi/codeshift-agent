@@ -245,3 +245,39 @@ DETECTION_CASES: list[DetectionCase] = [
         negative=True,
     ),
 ]
+
+# ---------------------------------------------------------------------------
+# Django v3 → v4 detection cases (regex analyzer)
+# ---------------------------------------------------------------------------
+
+_DJG_FORBIDDEN = [
+    "DJG001",
+    "DJG002",
+    "DJG003",
+    "DJG004",
+    "DJG005",
+    "DJG006",
+    "DJG007",
+    "DJG008",
+    "DJG009",
+    "DJG010",
+]
+
+DJANGO_DETECTION_CASES: list[DetectionCase] = [
+    _case("djg001-model-class", "django_v3_app.py", expected=["DJG001"]),
+    _case("djg002-use-l10n", "django_v3_app.py", expected=["DJG002"]),
+    _case("djg003-csrf-origins", "django_v3_app.py", expected=["DJG003"]),
+    _case("djg004-timezone-utc", "django_v3_app.py", expected=["DJG004"]),
+    _case("djg005-conf-url", "django_v3_app.py", expected=["DJG005"]),
+    _case("djg006-force-text", "django_v3_app.py", expected=["DJG006"]),
+    _case("djg007-smart-text", "django_v3_app.py", expected=["DJG007"]),
+    _case("djg008-ugettext", "django_v3_app.py", expected=["DJG008"]),
+    _case("djg009-conn-max-age", "django_v3_app.py", expected=["DJG009"]),
+    _case("djg010-formfield-callback", "django_v3_app.py", expected=["DJG010"]),
+    _case(
+        "django-v4-negative",
+        "django_v4_negative.py",
+        forbidden=_DJG_FORBIDDEN,
+        negative=True,
+    ),
+]

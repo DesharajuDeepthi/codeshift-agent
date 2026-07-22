@@ -104,6 +104,14 @@ def applicability_examples() -> list[DatasetExample]:
             },
             tags=["malformed"],
         ),
+        DatasetExample(
+            name="requirements-django-v3",
+            group="applicability",
+            inputs={"fixture_path": "tests/fixtures/req_txt_django"},
+            expected={"pack_id": "django-v3-to-v4", "status": "SUPPORTED"},
+            split="smoke",
+            tags=["manifest:requirements", "django:v3"],
+        ),
     ]
 
 
@@ -178,6 +186,18 @@ def chaos_examples() -> list[DatasetExample]:
                 "trajectory": "repair_partial",
             },
             tags=["trajectory", "repair"],
+        ),
+        DatasetExample(
+            name="auto-detect-selects-best-pack",
+            group="chaos",
+            inputs={"fixture_scenario": "auto_detect"},
+            expected={
+                "pack_id": "pydantic-v1-to-v2",
+                "report_status": "validated",
+                "pack_candidates_count": 2,
+            },
+            split="smoke",
+            tags=["auto-detect", "trajectory"],
         ),
     ]
 

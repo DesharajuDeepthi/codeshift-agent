@@ -108,6 +108,7 @@ FIXTURE_PROFILE_FAILURE = "profile_failure"
 FIXTURE_REPAIR_SUCCESS = "repair_success"
 FIXTURE_REPAIR_FAIL = "repair_fail"
 FIXTURE_VALIDATION_STRUCTURAL = "validation_structural"
+FIXTURE_AUTO_DETECT = "auto_detect"
 
 
 class UpgradePilotState(TypedDict):
@@ -140,6 +141,7 @@ class UpgradePilotState(TypedDict):
     profile: dict[str, Any] | None  # RepositoryProfile.model_dump()
     applicability_status: str  # ApplicabilityStatus value
     pack_id: str
+    pack_candidates: list[dict[str, Any]]  # auto-detection results, ranked by confidence
 
     # ── Parallel analysis outputs ─────────────────────────────────────────
     dependencies: Annotated[list[dict[str, Any]], operator.add]
@@ -186,6 +188,7 @@ def make_initial_state(
         profile=None,
         applicability_status=ApplicabilityStatus.SUPPORTED,
         pack_id="",
+        pack_candidates=[],
         dependencies=[],
         findings=[],
         test_ci_summary=None,

@@ -86,7 +86,12 @@ class TestProfile(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-specific applicability signals
+# Applicability signals
+#
+# PydanticSignal is kept for backward compatibility with the existing
+# pydantic-v1-to-v2 pack and its fixture data.  New packs should use the
+# ApplicabilityEngine in migration/applicability.py which produces
+# SignalResult objects instead.
 # ---------------------------------------------------------------------------
 
 
@@ -99,6 +104,14 @@ class PydanticSignal(StrEnum):
 
 
 class ApplicabilitySignals(BaseModel):
+    """
+    Applicability signals for the pydantic-v1-to-v2 pack.
+
+    Deprecated: new packs use migration.applicability.ApplicabilityEngine
+    which returns migration.applicability.ApplicabilityAssessment instead.
+    This model is retained for backward compatibility.
+    """
+
     model_config = {"frozen": True}
 
     pydantic_signal: PydanticSignal = PydanticSignal.NOT_FOUND
@@ -136,11 +149,27 @@ class RepositoryProfile(BaseModel):
     """
     Deterministic profile of an extracted repository workspace.
     Produced by the profiler; consumed by applicability checks and agents.
+
+    Multi-language fields (detected_languages, primary_language,
+    source_files_by_language) are populated by the language-agnostic profiler
+    path and are used by the ApplicabilityEngine.  The legacy Python-specific
+    fields (python_files, python_file_count, pydantic_dependencies, applicability)
+    are retained for backward compatibility with the existing pydantic-v1-to-v2
+    pack and its tests.
     """
 
     model_config = {"frozen": True}
 
-    # Python file inventory
+    # ── Multi-language inventory (new) ────────────────────────────────────
+    # Source files grouped by canonical language name.
+    # Populated by the repository profiler for all detected languages.
+    source_files_by_language: dict[str, list[str]] = Field(default_factory=dict)
+    # Ordered list of detected languages, descending by file count.
+    detected_languages: list[str] = Field(default_factory=list)
+    # Top language by file count, or None for empty repositories.
+    primary_language: str | None = None
+
+    # ── Python file inventory (retained for backward compat) ──────────────
     python_files: list[str] = Field(default_factory=list)
     python_file_count: int = 0
     source_roots: list[str] = Field(default_factory=list)
@@ -148,13 +177,13 @@ class RepositoryProfile(BaseModel):
     # Manifest files found
     manifest_files: list[ManifestFile] = Field(default_factory=list)
 
-    # All parsed dependency evidence (all packages)
+    # All parsed dependency evidence (all packages, all languages)
     all_dependencies: list[DependencyEvidence] = Field(default_factory=list)
 
-    # Pydantic-specific
+    # Pydantic-specific (retained for backward compat; new packs use all_dependencies)
     pydantic_dependencies: list[DependencyEvidence] = Field(default_factory=list)
 
-    # Runtime declarations (python_requires, .python-version, etc.)
+    # Runtime declarations (python_requires, .python-version, .nvmrc, go.toolchain, etc.)
     runtime_declarations: list[str] = Field(default_factory=list)
 
     # Test/CI
@@ -167,11 +196,11 @@ class RepositoryProfile(BaseModel):
     # Exclusions and generated paths that were skipped
     excluded_paths: list[str] = Field(default_factory=list)
 
-    # Syntax errors captured without failing the analysis
+    # Parse/syntax errors captured without failing the analysis
     syntax_errors: list[SyntaxError_] = Field(default_factory=list)
 
-    # Top-level applicability signals
+    # Legacy pydantic-specific applicability signals (new packs use ApplicabilityEngine)
     applicability: ApplicabilitySignals = Field(default_factory=ApplicabilitySignals)
 
     # Profiler metadata
-    profiler_version: str = "1.0.0"
+    profiler_version: str = "2.0.0"

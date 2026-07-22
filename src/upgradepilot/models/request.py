@@ -13,8 +13,8 @@ from upgradepilot.config import AnalysisMode
 # Only github.com is supported in V1.
 _ALLOWED_GITHUB_HOST = "github.com"
 _GITHUB_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
-# Supported pack IDs in V1
-_SUPPORTED_PACKS = {"pydantic-v1-to-v2"}
+# Pack IDs must match this format; existence is validated by the pack registry.
+_PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,98}[a-z0-9]$")
 
 
 class ParsedGitHubURL:
@@ -88,7 +88,7 @@ class AnalysisRequest(BaseModel):
 
     repository_url: str
     ref: str = "main"
-    migration_pack: str = "pydantic-v1-to-v2"
+    migration_pack: str | None = None
     analysis_mode: AnalysisMode = AnalysisMode.STANDARD
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -116,10 +116,14 @@ class AnalysisRequest(BaseModel):
 
     @field_validator("migration_pack")
     @classmethod
-    def validate_migration_pack(cls, v: str) -> str:
-        if v not in _SUPPORTED_PACKS:
+    def validate_migration_pack(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        # Validate format only (no I/O); existence is deferred to select_migration_pack node.
+        if not _PACK_ID_RE.match(v):
             raise ValueError(
-                f"Unsupported migration pack: {v!r}. Supported: {sorted(_SUPPORTED_PACKS)}"
+                f"Invalid migration_pack format: {v!r}. "
+                "Pack IDs must be lowercase alphanumeric with hyphens or underscores."
             )
         return v
 
