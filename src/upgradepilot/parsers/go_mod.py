@@ -19,9 +19,7 @@ _PARSER_NAME = "go_mod"
 _PARSER_VERSION = "1.0.0"
 
 # Matches:  require module/path v1.2.3
-_SINGLE_RE = re.compile(
-    r"^\s*require\s+([\w./\-]+)\s+(v[\w.\-+]+)", re.MULTILINE
-)
+_SINGLE_RE = re.compile(r"^\s*require\s+([\w./\-]+)\s+(v[\w.\-+]+)", re.MULTILINE)
 # Matches lines inside a require ( ... ) block
 _BLOCK_LINE_RE = re.compile(r"^\s+([\w./\-]+)\s+(v[\w.\-+]+)", re.MULTILINE)
 _BLOCK_RE = re.compile(r"require\s*\(([^)]*)\)", re.DOTALL)

@@ -36,10 +36,28 @@ MAX_EVIDENCE_LINES = 8
 
 _EXCLUDED_DIR_NAMES = frozenset(
     {
-        ".git", ".hg", ".svn", ".tox", ".nox", ".venv", "venv", "env",
-        "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-        "node_modules", "dist", "build", ".next", ".nuxt", "target",
-        "vendor", "third_party", "generated", "gen",
+        ".git",
+        ".hg",
+        ".svn",
+        ".tox",
+        ".nox",
+        ".venv",
+        "venv",
+        "env",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "node_modules",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        "target",
+        "vendor",
+        "third_party",
+        "generated",
+        "gen",
     }
 )
 

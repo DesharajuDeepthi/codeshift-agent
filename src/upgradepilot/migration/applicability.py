@@ -150,7 +150,8 @@ class ApplicabilityEngine:
         lower_gte = sig.get("lower_gte")
 
         matching_deps = [
-            d for d in profile.all_dependencies
+            d
+            for d in profile.all_dependencies
             if d.normalized_name == target_package.lower().replace("_", "-")
         ]
 
@@ -299,9 +300,7 @@ class ApplicabilityEngine:
             )
 
         # Check against all source files in the profile
-        all_files = [
-            f for files in profile.source_files_by_language.values() for f in files
-        ]
+        all_files = [f for files in profile.source_files_by_language.values() for f in files]
         matched = any(fnmatch.fnmatch(f, glob) for f in all_files)
 
         return SignalResult(
@@ -316,9 +315,7 @@ class ApplicabilityEngine:
             ),
         )
 
-    def _eval_code_pattern(
-        self, sig: dict[str, Any], workspace: Path
-    ) -> SignalResult | None:
+    def _eval_code_pattern(self, sig: dict[str, Any], workspace: Path) -> SignalResult | None:
         """Evaluate import/text patterns by scanning workspace files with regex."""
         import re
 
@@ -358,9 +355,7 @@ class ApplicabilityEngine:
                     fired=True,
                     result_status=result_status,
                     confidence=confidence,
-                    reason=(
-                        f"Pattern {pattern_str!r} matched in {filepath.name}."
-                    ),
+                    reason=(f"Pattern {pattern_str!r} matched in {filepath.name}."),
                 )
 
         return SignalResult(

@@ -23,10 +23,12 @@ _DEP_SECTIONS = ("dependencies", "dev-dependencies", "build-dependencies")
 def _load_toml(content: str) -> dict:  # type: ignore[type-arg]
     try:
         import tomllib  # Python 3.11+
+
         return tomllib.loads(content)
     except ImportError:
         try:
             import tomli  # optional backport
+
             return tomli.loads(content)
         except ImportError:
             pass
@@ -86,8 +88,10 @@ def _parse_cargo_spec(spec: object) -> VersionConstraint:
         return _parse_version_req(spec)
     if isinstance(spec, dict):
         version = spec.get("version", "")
-        return _parse_version_req(str(version)) if version else VersionConstraint(
-            raw="", kind=ConstraintKind.UNKNOWN
+        return (
+            _parse_version_req(str(version))
+            if version
+            else VersionConstraint(raw="", kind=ConstraintKind.UNKNOWN)
         )
     return VersionConstraint(raw=str(spec), kind=ConstraintKind.UNKNOWN)
 

@@ -24,7 +24,12 @@ class TestPacksEndpoint:
     def test_each_pack_has_required_fields(self) -> None:
         packs = self.client.get("/packs").json()["packs"]
         required = {
-            "pack_id", "display_name", "language", "analyzer_kind", "version", "description"
+            "pack_id",
+            "display_name",
+            "language",
+            "analyzer_kind",
+            "version",
+            "description",
         }
         for pack in packs:
             missing = required - pack.keys()

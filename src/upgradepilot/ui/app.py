@@ -162,7 +162,9 @@ def _show_recommendations(report: dict[str, Any]) -> None:
         st.subheader("Migration Phases")
         for i, phase in enumerate(phases, 1):
             p = phase if isinstance(phase, dict) else {"description": str(phase)}
-            with st.expander(f"Phase {i}: {p.get('name', p.get('phase', 'Phase'))}", expanded=i == 1):
+            with st.expander(
+                f"Phase {i}: {p.get('name', p.get('phase', 'Phase'))}", expanded=i == 1
+            ):
                 st.write(p.get("description") or p.get("summary") or "")
                 files = _as_list(p.get("file_paths") or p.get("steps"))
                 for f in files:
@@ -175,11 +177,13 @@ def _show_recommendations(report: dict[str, Any]) -> None:
         rows = []
         for item in worklist:
             w = item if isinstance(item, dict) else {"path": str(item)}
-            rows.append({
-                "file": w.get("file_path") or w.get("path") or "",
-                "priority": w.get("priority") or w.get("change_type") or "",
-                "findings": w.get("findings_count") or "",
-            })
+            rows.append(
+                {
+                    "file": w.get("file_path") or w.get("path") or "",
+                    "priority": w.get("priority") or w.get("change_type") or "",
+                    "findings": w.get("findings_count") or "",
+                }
+            )
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
     # Dependency actions
@@ -187,7 +191,11 @@ def _show_recommendations(report: dict[str, Any]) -> None:
     if dep_actions:
         st.subheader("Dependency Actions")
         for item in dep_actions:
-            st.write(f"- {item}" if isinstance(item, str) else f"- {item.get('action','')}: `{item.get('package','')}`")
+            st.write(
+                f"- {item}"
+                if isinstance(item, str)
+                else f"- {item.get('action', '')}: `{item.get('package', '')}`"
+            )
 
     # Checklists
     for label, key in (
@@ -275,9 +283,7 @@ if "available_packs" not in st.session_state:
 
 _pack_list: list[dict[str, Any]] = st.session_state.get("available_packs", [])
 _AUTO_DETECT_LABEL = "Auto-detect (recommended)"
-_pack_options = [_AUTO_DETECT_LABEL] + [
-    f"{p['display_name']} ({p['pack_id']})" for p in _pack_list
-]
+_pack_options = [_AUTO_DETECT_LABEL] + [f"{p['display_name']} ({p['pack_id']})" for p in _pack_list]
 
 with st.sidebar:
     st.header("Analysis")
@@ -316,6 +322,7 @@ if not analysis_id:
     st.info("Enter a public GitHub repository URL to start an analysis.")
 else:
     import time as _time
+
     status = _safe_get(f"/analyses/{analysis_id}")
     if status:
         current_status = status.get("status") or "unknown"

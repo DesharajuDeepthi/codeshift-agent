@@ -6,8 +6,8 @@ import uuid
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
 from upgradepilot.auth.jwt import decode_access_token
+
 from upgradepilot.auth.models import TokenPayload
 
 _bearer = HTTPBearer()

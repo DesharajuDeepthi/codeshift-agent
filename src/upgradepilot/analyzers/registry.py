@@ -53,8 +53,7 @@ def get_analyzer(analyzer_kind: str) -> LanguageAnalyzer:
     if analyzer_kind not in _REGISTRY:
         available = sorted(_REGISTRY.keys())
         raise KeyError(
-            f"No analyzer registered for kind {analyzer_kind!r}. "
-            f"Available kinds: {available}"
+            f"No analyzer registered for kind {analyzer_kind!r}. Available kinds: {available}"
         )
     return _REGISTRY[analyzer_kind]()
 
